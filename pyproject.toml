@@ -1,3 +1,41 @@
 [build-system]
-requires = ["setuptools>=64.0.0"]
+requires = ["setuptools>=64.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "netbox-ping"
+version = "2.0.0"
+description = "A NetBox plugin for pinging and discovering IPs"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "Christian Rose" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Django",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+
+]
+dependencies = [
+    "dnspython>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/DenDanskeMine/netbox-ping"
+Repository = "https://github.com/DenDanskeMine/netbox-ping"
+Issues = "https://github.com/DenDanskeMine/netbox-ping/issues"
+
+[tool.setuptools.packages.find]
+include = ["netbox_ping*"]
+
+[tool.setuptools.package-data]
+netbox_ping = [
+    "templates/**/*",
+    "static/**/*",
+    "migrations/*",
+]

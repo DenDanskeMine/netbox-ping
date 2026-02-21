@@ -1,0 +1,159 @@
+{% extends 'base/layout.html' %}
+{% load helpers %}
+
+{% block title %}NetBox Ping Settings{% endblock %}
+
+{% block header %}
+  <h1>NetBox Ping Settings</h1>
+{% endblock %}
+
+{% block content %}
+<form method="post">
+  {% csrf_token %}
+
+  <div class="row mb-4">
+    {# ── DNS Configuration ── #}
+    <div class="col-md-6">
+      <div class="card h-100">
+        <h5 class="card-header">
+          <span class="mdi mdi-dns"></span> DNS Configuration
+        </h5>
+        <div class="card-body">
+          {% for field in form %}
+            {% if field.name in 'dns_server1,dns_server2,dns_server3,perform_dns_lookup' %}
+            <div class="mb-3">
+              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}
+              <div class="form-text text-muted">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+              <div class="text-danger">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Auto-Scan Configuration ── #}
+    <div class="col-md-6">
+      <div class="card h-100">
+        <h5 class="card-header">
+          <span class="mdi mdi-clock-outline"></span> Auto-Scan Configuration
+        </h5>
+        <div class="card-body">
+          {% for field in form %}
+            {% if field.name in 'auto_scan_enabled,auto_scan_interval,auto_discover_enabled,auto_discover_interval,max_prefix_size' %}
+            <div class="mb-3">
+              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}
+              <div class="form-text text-muted">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+              <div class="text-danger">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="text-end mb-4">
+    <button type="submit" class="btn btn-primary">
+      <span class="mdi mdi-content-save"></span> Save Settings
+    </button>
+  </div>
+</form>
+
+{# ── Per-Prefix Schedules ── #}
+<div class="card">
+  <h5 class="card-header">
+    <span class="mdi mdi-calendar-clock"></span> Per-Prefix Schedules
+  </h5>
+  <div class="card-body">
+    {% if schedule_data %}
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead>
+          <tr>
+            <th>Prefix</th>
+            <th>Scan Mode</th>
+            <th>Scan Interval</th>
+            <th>Discover Mode</th>
+            <th>Discover Interval</th>
+            <th>Last Scanned</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in schedule_data %}
+          <tr>
+            <td>
+              <a href="{{ item.schedule.prefix.get_absolute_url }}">
+                {{ item.schedule.prefix.prefix }}
+              </a>
+            </td>
+            <td>
+              {% if item.schedule.scan_mode == 'follow_global' %}
+                <span class="badge text-bg-info">Follow Global</span>
+              {% elif item.schedule.scan_mode == 'custom_on' %}
+                <span class="badge text-bg-success">Custom On</span>
+              {% else %}
+                <span class="badge text-bg-danger">Custom Off</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.schedule.scan_mode == 'custom_on' %}
+                {{ item.schedule.get_scan_interval_display }}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.schedule.discover_mode == 'follow_global' %}
+                <span class="badge text-bg-info">Follow Global</span>
+              {% elif item.schedule.discover_mode == 'custom_on' %}
+                <span class="badge text-bg-success">Custom On</span>
+              {% else %}
+                <span class="badge text-bg-danger">Custom Off</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.schedule.discover_mode == 'custom_on' %}
+                {{ item.schedule.get_discover_interval_display }}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.scan_result and item.scan_result.last_scanned %}
+                {{ item.scan_result.last_scanned|timesince }} ago
+              {% else %}
+                <span class="text-muted">Never</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ item.schedule.prefix.get_absolute_url }}ping/"
+                 class="btn btn-sm btn-outline-primary">
+                <span class="mdi mdi-pencil"></span> Edit
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-muted">
+      No per-prefix schedules configured. You can set up individual schedules from a prefix's
+      <strong>Ping Status</strong> tab.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

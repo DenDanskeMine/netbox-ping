@@ -1,13 +1,24 @@
-from rest_framework import serializers
 from netbox.api.serializers import NetBoxModelSerializer
-from ..models import PluginSettingsModel
+from ..models import PingResult, SubnetScanResult
 
-class PluginSettingsModelSerializer(NetBoxModelSerializer):
+
+class PingResultSerializer(NetBoxModelSerializer):
     class Meta:
-        model = PluginSettingsModel
+        model = PingResult
         fields = (
-            'id', 'update_tags', 'dns_server1', 'dns_server2', 
-            'dns_server3', 'perform_dns_lookup', 'created', 
-            'last_updated'
+            'id', 'url', 'display', 'ip_address', 'is_reachable',
+            'last_seen', 'response_time_ms', 'dns_name', 'last_checked',
+            'tags', 'custom_fields', 'created', 'last_updated',
         )
-        brief_fields = ['id', 'update_tags'] 
+        brief_fields = ('id', 'url', 'display', 'ip_address', 'is_reachable')
+
+
+class SubnetScanResultSerializer(NetBoxModelSerializer):
+    class Meta:
+        model = SubnetScanResult
+        fields = (
+            'id', 'url', 'display', 'prefix', 'total_hosts', 'hosts_up',
+            'hosts_down', 'last_scanned',
+            'tags', 'custom_fields', 'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'prefix', 'hosts_up', 'total_hosts')

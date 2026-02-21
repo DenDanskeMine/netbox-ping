@@ -1,0 +1,70 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+  <li class="breadcrumb-item">
+    <a href="{% url 'plugins:netbox_ping:subnetscanresult_list' %}">Scan Results</a>
+  </li>
+  <li class="breadcrumb-item active">{{ object }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Scan Summary</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Prefix</th>
+            <td>
+              <a href="{{ object.prefix.get_absolute_url }}">{{ object.prefix }}</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Total Hosts</th>
+            <td>{{ object.total_hosts }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Hosts Up</th>
+            <td><span class="badge bg-success">{{ object.hosts_up }}</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Hosts Down</th>
+            <td><span class="badge bg-danger">{{ object.hosts_down }}</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Utilization</th>
+            <td>
+              <div class="progress" style="height: 20px;">
+                <div class="progress-bar {% if object.utilization > 90 %}bg-danger{% elif object.utilization > 75 %}bg-warning{% else %}bg-success{% endif %}"
+                     style="width: {{ object.utilization }}%">
+                  {{ object.utilization }}%
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Last Scanned</th>
+            <td>{{ object.last_scanned|default:"Never" }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Actions</h5>
+      <div class="card-body">
+        <a href="{% url 'plugins:netbox_ping:prefix_scan' pk=object.prefix.pk %}" class="btn btn-primary me-2">
+          <span class="mdi mdi-lan-check" aria-hidden="true"></span> Ping Subnet
+        </a>
+        <a href="{% url 'plugins:netbox_ping:prefix_discover' pk=object.prefix.pk %}" class="btn btn-success">
+          <span class="mdi mdi-magnify-scan" aria-hidden="true"></span> Discover IPs
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

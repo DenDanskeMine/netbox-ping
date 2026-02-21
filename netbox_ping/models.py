@@ -1,73 +1,249 @@
+from datetime import timedelta
+
 from django.db import models
+from django.urls import reverse
+from django.utils import timezone
 from netbox.models import NetBoxModel
-from utilities.choices import ChoiceSet
 
-class PluginSettingsModel(NetBoxModel):
-    """Store plugin settings"""
+
+INTERVAL_CHOICES = [
+    (0, 'Disabled'),
+    (5, 'Every 5 minutes'),
+    (15, 'Every 15 minutes'),
+    (30, 'Every 30 minutes'),
+    (60, 'Hourly'),
+    (360, 'Every 6 hours'),
+    (720, 'Every 12 hours'),
+    (1440, 'Daily'),
+    (10080, 'Weekly'),
+]
+
+
+class PingResult(NetBoxModel):
+    """Stores per-IP ping result. One record per IPAddress."""
+
+    ip_address = models.OneToOneField(
+        to='ipam.IPAddress',
+        on_delete=models.CASCADE,
+        related_name='ping_result',
+    )
+    is_reachable = models.BooleanField(
+        default=False,
+        verbose_name='Reachable',
+    )
+    last_seen = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Last Seen',
+        help_text='Last time this IP responded to ping',
+    )
+    response_time_ms = models.FloatField(
+        blank=True,
+        null=True,
+        verbose_name='RTT (ms)',
+    )
+    dns_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        verbose_name='DNS Name',
+    )
+    last_checked = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Last Checked',
+    )
+
     class Meta:
-        verbose_name = 'Plugin Settings'
-        verbose_name_plural = 'Plugin Settings'
-        ordering = ['pk']
+        ordering = ['-last_checked']
+        verbose_name = 'Ping Result'
+        verbose_name_plural = 'Ping Results'
 
-    # Required fields from NetBoxModel
-    id = models.BigAutoField(
-        primary_key=True
+    def __str__(self):
+        status = 'Up' if self.is_reachable else 'Down'
+        return f'{self.ip_address} — {status}'
+
+    def get_absolute_url(self):
+        return reverse('plugins:netbox_ping:pingresult', args=[self.pk])
+
+    def get_status_color(self):
+        return 'success' if self.is_reachable else 'danger'
+
+
+class SubnetScanResult(NetBoxModel):
+    """Stores per-prefix scan summary."""
+
+    prefix = models.OneToOneField(
+        to='ipam.Prefix',
+        on_delete=models.CASCADE,
+        related_name='scan_result',
     )
-    created = models.DateTimeField(
-        auto_now_add=True
-    )
-    last_updated = models.DateTimeField(
-        auto_now=True
-    )
-    custom_field_data = models.JSONField(
+    total_hosts = models.IntegerField(default=0)
+    hosts_up = models.IntegerField(default=0)
+    hosts_down = models.IntegerField(default=0)
+    last_scanned = models.DateTimeField(
         blank=True,
         null=True,
-        default=dict
+        verbose_name='Last Scanned',
     )
 
-    # Our custom fields
-    update_tags = models.BooleanField(
-        default=True,
-        verbose_name='Update Tags',
-        help_text='Whether to update tags when scanning IPs'
-    )
+    class Meta:
+        ordering = ['-last_scanned']
+        verbose_name = 'Subnet Scan Result'
+        verbose_name_plural = 'Subnet Scan Results'
 
-    # Add DNS server fields
+    def __str__(self):
+        return f'{self.prefix} — {self.hosts_up}/{self.total_hosts} up'
+
+    def get_absolute_url(self):
+        return reverse('plugins:netbox_ping:subnetscanresult', args=[self.pk])
+
+    @property
+    def utilization(self):
+        if self.total_hosts == 0:
+            return 0
+        return round(self.hosts_up / self.total_hosts * 100, 1)
+
+
+class PluginSettings(models.Model):
+    """Singleton model for plugin DNS configuration."""
+
     dns_server1 = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
+        max_length=255, blank=True, default='',
         verbose_name='Primary DNS Server',
-        help_text='Primary DNS server (e.g., 8.8.8.8)'
     )
-
     dns_server2 = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
+        max_length=255, blank=True, default='',
         verbose_name='Secondary DNS Server',
-        help_text='Secondary DNS server (e.g., 8.8.4.4)'
     )
-
     dns_server3 = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
+        max_length=255, blank=True, default='',
         verbose_name='Tertiary DNS Server',
-        help_text='Tertiary DNS server'
     )
-
     perform_dns_lookup = models.BooleanField(
         default=True,
         verbose_name='Perform DNS Lookups',
-        help_text='Whether to perform DNS lookups when scanning IPs'
     )
 
+    # ── Auto-Scan scheduling ──
+    auto_scan_enabled = models.BooleanField(
+        default=False,
+        verbose_name='Enable Auto-Scan',
+        help_text='Automatically ping existing IPs in prefixes on a schedule',
+    )
+    auto_scan_interval = models.IntegerField(
+        default=60,
+        choices=INTERVAL_CHOICES,
+        verbose_name='Auto-Scan Interval',
+    )
+    auto_discover_enabled = models.BooleanField(
+        default=False,
+        verbose_name='Enable Auto-Discover',
+        help_text='Automatically discover new IPs in prefixes on a schedule',
+    )
+    auto_discover_interval = models.IntegerField(
+        default=1440,
+        choices=INTERVAL_CHOICES,
+        verbose_name='Auto-Discover Interval',
+    )
+    max_prefix_size = models.IntegerField(
+        default=24,
+        verbose_name='Minimum Prefix Length',
+        help_text='Only auto-scan prefixes with this length or longer (e.g. 24 = /24 and smaller subnets)',
+    )
+
+    class Meta:
+        verbose_name = 'Plugin Settings'
+        verbose_name_plural = 'Plugin Settings'
+
     def __str__(self):
-        return "NetBox Ping Settings"
+        return 'NetBox Ping Settings'
 
     @classmethod
-    def get_settings(cls):
-        """Get or create settings"""
-        settings, _ = cls.objects.get_or_create(pk=1)
-        return settings 
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def get_dns_servers(self):
+        return [s for s in [self.dns_server1, self.dns_server2, self.dns_server3] if s]
+
+
+SCHEDULE_MODE_CHOICES = [
+    ('follow_global', 'Follow Global'),
+    ('custom_on', 'Custom On'),
+    ('custom_off', 'Custom Off'),
+]
+
+CUSTOM_INTERVAL_CHOICES = [
+    (5, 'Every 5 minutes'),
+    (15, 'Every 15 minutes'),
+    (30, 'Every 30 minutes'),
+    (60, 'Hourly'),
+    (360, 'Every 6 hours'),
+    (720, 'Every 12 hours'),
+    (1440, 'Daily'),
+    (10080, 'Weekly'),
+]
+
+
+class PrefixSchedule(models.Model):
+    """Per-prefix scheduling overrides for auto-scan/discover."""
+
+    prefix = models.OneToOneField(
+        to='ipam.Prefix',
+        on_delete=models.CASCADE,
+        related_name='ping_schedule',
+    )
+    scan_mode = models.CharField(
+        max_length=20,
+        choices=SCHEDULE_MODE_CHOICES,
+        default='follow_global',
+        verbose_name='Scan Mode',
+    )
+    scan_interval = models.IntegerField(
+        default=60,
+        choices=CUSTOM_INTERVAL_CHOICES,
+        verbose_name='Scan Interval',
+    )
+    discover_mode = models.CharField(
+        max_length=20,
+        choices=SCHEDULE_MODE_CHOICES,
+        default='follow_global',
+        verbose_name='Discover Mode',
+    )
+    discover_interval = models.IntegerField(
+        default=1440,
+        choices=CUSTOM_INTERVAL_CHOICES,
+        verbose_name='Discover Interval',
+    )
+
+    class Meta:
+        verbose_name = 'Prefix Schedule'
+        verbose_name_plural = 'Prefix Schedules'
+
+    def __str__(self):
+        return f'Schedule for {self.prefix}'
+
+    def is_scan_enabled(self, global_settings):
+        if self.scan_mode == 'custom_on':
+            return True
+        if self.scan_mode == 'custom_off':
+            return False
+        return global_settings.auto_scan_enabled
+
+    def get_effective_scan_interval(self, global_settings):
+        if self.scan_mode == 'custom_on':
+            return self.scan_interval
+        return global_settings.auto_scan_interval
+
+    def is_discover_enabled(self, global_settings):
+        if self.discover_mode == 'custom_on':
+            return True
+        if self.discover_mode == 'custom_off':
+            return False
+        return global_settings.auto_discover_enabled
+
+    def get_effective_discover_interval(self, global_settings):
+        if self.discover_mode == 'custom_on':
+            return self.discover_interval
+        return global_settings.auto_discover_interval

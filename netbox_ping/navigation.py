@@ -1,17 +1,26 @@
-from netbox.plugins import PluginMenuItem, PluginMenuButton
+from netbox.plugins import PluginMenu, PluginMenuItem
 
-menu_items = (
-    PluginMenuItem(
-        link='plugins:netbox_ping:ping_home',
-        link_text='Network Tools',
-        permissions=('ipam.view_prefix',),
-        buttons=(
-            PluginMenuButton(
-                link='plugins:netbox_ping:ping_home',
-                title='Network Tools',
-                icon_class='mdi mdi-lan',
-                permissions=('ipam.view_prefix',),
+menu = PluginMenu(
+    label='Ping',
+    groups=(
+        ('Results', (
+            PluginMenuItem(
+                link='plugins:netbox_ping:pingresult_list',
+                link_text='Ping Results',
+                permissions=('netbox_ping.view_pingresult',),
             ),
-        ),
+            PluginMenuItem(
+                link='plugins:netbox_ping:subnetscanresult_list',
+                link_text='Scan Results',
+                permissions=('netbox_ping.view_subnetscanresult',),
+            ),
+        )),
+        ('Configuration', (
+            PluginMenuItem(
+                link='plugins:netbox_ping:settings',
+                link_text='Settings',
+            ),
+        )),
     ),
-) 
+    icon_class='mdi mdi-lan-check',
+)

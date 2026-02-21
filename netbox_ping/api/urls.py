@@ -1,9 +1,10 @@
 from netbox.api.routers import NetBoxRouter
 from . import views
 
-app_name = 'netbox-ping-api'
+app_name = 'netbox_ping-api'
 
 router = NetBoxRouter()
-router.register('settings', views.PluginSettingsViewSet)
+router.register('ping-results', views.PingResultViewSet)
+router.register('scan-results', views.SubnetScanResultViewSet)
 
-urlpatterns = router.urls 
+urlpatterns = router.urls
