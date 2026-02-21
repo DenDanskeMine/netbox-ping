@@ -94,7 +94,8 @@ From the prefix list view, select one or more prefixes using the checkboxes, the
 
 ### Custom Status badge
 
-<img width="2257" height="556" alt="image" src="https://github.com/user-attachments/assets/8cf5e98d-de21-4570-a5cc-d0826cdd3762" />
+<img width="2257" height="556" alt="image" src="https://github.com/user-attachments/assets/f2792d6e-e2a1-4ce4-869e-9a57b574d518" />
+
 
 <img width="731" height="441" alt="image" src="https://github.com/user-attachments/assets/45156d3c-d858-4e40-9304-e895ac4897e1" />
 
