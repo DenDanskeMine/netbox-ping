@@ -24,7 +24,7 @@ A NetBox plugin for pinging, discovering, and monitoring IP addresses directly f
 ## Requirements
 
 - NetBox **4.5.0** or later
-- Python **3.10** or later
+- Python **3.12** or later
 - `ping` command available on the NetBox server
 - NetBox background worker running (`netbox-rq`)
 
