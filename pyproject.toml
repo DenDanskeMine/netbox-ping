@@ -7,7 +7,7 @@ name = "netbox-ping"
 version = "2.0.0"
 description = "A NetBox plugin for pinging and discovering IPs"
 readme = "README.md"
-license = "Apache-2.0"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     { name = "Christian Rose" },
