@@ -1,18 +1,32 @@
 from django.urls import path
-
 from . import views
 
 app_name = 'netbox_ping'
 
-# Define a list of URL patterns to be imported by NetBox. Each pattern maps a URL to
-# a specific view so that it can be accessed by users.
 urlpatterns = [
-    path('', views.PingHomeView.as_view(), name='ping_home'),
-    path('ping-subnet/<int:prefix_id>/', views.PingSubnetView.as_view(), name='ping_subnet'),
-    path('scan-subnet/<int:prefix_id>/', views.ScanSubnetView.as_view(), name='scan_subnet'),
-    path('initialize/', views.InitializePluginView.as_view(), name='initialize_plugin'),
-    path('scan-all/', views.ScanAllView.as_view(), name='scan_all'),
-    path('update-settings/', views.UpdateSettingsView.as_view(), name='update_settings'),
-    path('ping-ip/<path:ip_address>/', views.PingSingleIPView.as_view(), name='ping_ip'),
-    path('scan-prefix/<path:prefix>/', views.ScanSinglePrefixView.as_view(), name='scan_prefix'),
+    # PingResult views
+    path('ping-results/', views.PingResultListView.as_view(), name='pingresult_list'),
+    path('ping-results/<int:pk>/', views.PingResultView.as_view(), name='pingresult'),
+    path('ping-results/<int:pk>/delete/', views.PingResultDeleteView.as_view(), name='pingresult_delete'),
+    path('ping-results/delete/', views.PingResultBulkDeleteView.as_view(), name='pingresult_bulk_delete'),
+
+    # SubnetScanResult views
+    path('scan-results/', views.SubnetScanResultListView.as_view(), name='subnetscanresult_list'),
+    path('scan-results/<int:pk>/', views.SubnetScanResultView.as_view(), name='subnetscanresult'),
+    path('scan-results/<int:pk>/delete/', views.SubnetScanResultDeleteView.as_view(), name='subnetscanresult_delete'),
+
+    # Action endpoints
+    path('prefix/<int:pk>/scan/', views.PrefixScanActionView.as_view(), name='prefix_scan'),
+    path('prefix/<int:pk>/discover/', views.PrefixDiscoverActionView.as_view(), name='prefix_discover'),
+    path('ip/<int:pk>/ping/', views.IPPingSingleActionView.as_view(), name='ip_ping'),
+
+    # Bulk action endpoints (from prefix list page)
+    path('bulk-scan/', views.BulkPrefixScanView.as_view(), name='bulk_prefix_scan'),
+    path('bulk-discover/', views.BulkPrefixDiscoverView.as_view(), name='bulk_prefix_discover'),
+
+    # Per-prefix schedule
+    path('prefix/<int:pk>/schedule/', views.PrefixScheduleEditView.as_view(), name='prefix_schedule'),
+
+    # Settings
+    path('settings/', views.PluginSettingsEditView.as_view(), name='settings'),
 ]

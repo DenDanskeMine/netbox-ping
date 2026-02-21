@@ -1,0 +1,130 @@
+{% extends 'generic/object.html' %}
+{% load render_table from django_tables2 %}
+
+{% block content %}
+{# ── Action Buttons ── #}
+<div class="row mb-3">
+  <div class="col">
+    <a href="{% url 'plugins:netbox_ping:prefix_scan' pk=object.pk %}" class="btn btn-primary me-2">
+      <span class="mdi mdi-lan-check" aria-hidden="true"></span> Ping All IPs
+    </a>
+    <a href="{% url 'plugins:netbox_ping:prefix_discover' pk=object.pk %}" class="btn btn-success">
+      <span class="mdi mdi-magnify-scan" aria-hidden="true"></span> Discover New IPs
+    </a>
+  </div>
+</div>
+
+{# ── Schedule Configuration ── #}
+<div class="card mb-3">
+  <h5 class="card-header">
+    <span class="mdi mdi-clock-outline"></span> Auto-Scan Schedule
+  </h5>
+  <div class="card-body p-0">
+    <form method="post" action="{% url 'plugins:netbox_ping:prefix_schedule' pk=object.pk %}">
+      {% csrf_token %}
+      <table class="table table-hover attr-table mb-0">
+        <tr>
+          <th scope="row" style="width: 30%">Scan Mode</th>
+          <td>
+            <div class="d-flex align-items-center gap-3">
+              {{ schedule_form.scan_mode }}
+              <span class="text-muted" id="scan-global-hint">
+                {% if plugin_settings.auto_scan_enabled %}
+                  Global: <span class="badge text-bg-success">On</span> — {{ plugin_settings.get_auto_scan_interval_display }}
+                {% else %}
+                  Global: <span class="badge text-bg-secondary">Off</span>
+                {% endif %}
+              </span>
+            </div>
+          </td>
+        </tr>
+        <tr id="scan-interval-row">
+          <th scope="row">Scan Interval</th>
+          <td>{{ schedule_form.scan_interval }}</td>
+        </tr>
+        <tr>
+          <th scope="row" style="width: 30%">Discover Mode</th>
+          <td>
+            <div class="d-flex align-items-center gap-3">
+              {{ schedule_form.discover_mode }}
+              <span class="text-muted" id="discover-global-hint">
+                {% if plugin_settings.auto_discover_enabled %}
+                  Global: <span class="badge text-bg-success">On</span> — {{ plugin_settings.get_auto_discover_interval_display }}
+                {% else %}
+                  Global: <span class="badge text-bg-secondary">Off</span>
+                {% endif %}
+              </span>
+            </div>
+          </td>
+        </tr>
+        <tr id="discover-interval-row">
+          <th scope="row">Discover Interval</th>
+          <td>{{ schedule_form.discover_interval }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Last Scanned</th>
+          <td>
+            {% if scan_result and scan_result.last_scanned %}
+              {{ scan_result.last_scanned|timesince }} ago
+            {% else %}
+              <span class="text-muted">Never</span>
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+      <div class="card-footer text-end">
+        <button type="submit" class="btn btn-sm btn-primary">
+          <span class="mdi mdi-content-save"></span> Save Schedule
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Show/hide interval rows based on mode selection #}
+<script>
+(function() {
+  function setupToggle(modeId, rowId, hintId) {
+    var modeEl = document.getElementById(modeId);
+    var rowEl = document.getElementById(rowId);
+    var hintEl = document.getElementById(hintId);
+    if (!modeEl || !rowEl) return;
+
+    function update() {
+      var val = modeEl.value;
+      rowEl.style.display = (val === 'custom_on') ? '' : 'none';
+      if (hintEl) hintEl.style.display = (val === 'follow_global') ? '' : 'none';
+    }
+
+    // Listen for native change event (TomSelect dispatches this)
+    modeEl.addEventListener('change', update);
+
+    // Run initial state after a short delay to let TomSelect initialize
+    update();
+    setTimeout(update, 200);
+    setTimeout(update, 500);
+  }
+
+  // Run after page is fully loaded (including TomSelect init)
+  if (document.readyState === 'complete') {
+    setupToggle('id_scan_mode', 'scan-interval-row', 'scan-global-hint');
+    setupToggle('id_discover_mode', 'discover-interval-row', 'discover-global-hint');
+  } else {
+    window.addEventListener('load', function() {
+      setupToggle('id_scan_mode', 'scan-interval-row', 'scan-global-hint');
+      setupToggle('id_discover_mode', 'discover-interval-row', 'discover-global-hint');
+    });
+  }
+})();
+</script>
+
+{# ── Ping Results Table ── #}
+{% if table.rows|length > 0 %}
+  {% render_table table %}
+{% else %}
+  <div class="alert alert-info">
+    No ping results yet. Click <strong>Ping All IPs</strong> to scan existing IPs
+    or <strong>Discover New IPs</strong> to find new hosts.
+  </div>
+{% endif %}
+{% endblock %}

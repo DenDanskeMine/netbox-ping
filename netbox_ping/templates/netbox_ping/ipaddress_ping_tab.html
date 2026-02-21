@@ -1,0 +1,55 @@
+{% extends 'generic/object.html' %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col">
+    <a href="{% url 'plugins:netbox_ping:ip_ping' pk=object.pk %}" class="btn btn-primary">
+      <span class="mdi mdi-lan-check" aria-hidden="true"></span> Ping Now
+    </a>
+  </div>
+</div>
+
+{% if ping_result %}
+<div class="row">
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Ping Status</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Status</th>
+            <td>
+              {% if ping_result.is_reachable %}
+                <span class="badge bg-success">Up</span>
+              {% else %}
+                <span class="badge bg-danger">Down</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">RTT</th>
+            <td>{{ ping_result.response_time_ms|default:"N/A" }}{% if ping_result.response_time_ms %} ms{% endif %}</td>
+          </tr>
+          <tr>
+            <th scope="row">DNS Name</th>
+            <td>{{ ping_result.dns_name|default:"—" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Last Seen</th>
+            <td>{{ ping_result.last_seen|default:"Never" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Last Checked</th>
+            <td>{{ ping_result.last_checked|default:"Never" }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+  No ping data yet. Click <strong>Ping Now</strong> to check this IP.
+</div>
+{% endif %}
+{% endblock %}

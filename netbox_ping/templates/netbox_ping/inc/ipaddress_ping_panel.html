@@ -1,0 +1,39 @@
+<div class="card">
+  <h5 class="card-header">
+    <span class="mdi mdi-lan-check"></span> Ping Status
+  </h5>
+  <div class="card-body">
+    {% if ping_result %}
+    <table class="table table-hover attr-table">
+      <tr>
+        <th scope="row">Status</th>
+        <td>
+          {% if ping_result.is_reachable %}
+            <span class="badge text-bg-success">Up</span>
+          {% else %}
+            <span class="badge text-bg-danger">Down</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">RTT</th>
+        <td>{{ ping_result.response_time_ms|default:"N/A" }}{% if ping_result.response_time_ms %} ms{% endif %}</td>
+      </tr>
+      <tr>
+        <th scope="row">DNS Name</th>
+        <td>{{ ping_result.dns_name|default:"—" }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Last Seen</th>
+        <td>{{ ping_result.last_seen|default:"Never" }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Last Checked</th>
+        <td>{{ ping_result.last_checked|default:"Never" }}</td>
+      </tr>
+    </table>
+    {% else %}
+    <p class="text-muted mb-0">No ping data available.</p>
+    {% endif %}
+  </div>
+</div>

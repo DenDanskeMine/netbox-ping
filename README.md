@@ -1,158 +1,143 @@
-# NetBox Ping Plugin
-![Python](https://img.shields.io/badge/python-3.12.3-blue.svg)
-![NetBox](https://img.shields.io/badge/netbox-4.2.2-blue.svg)
+# NetBox Ping
+
+![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![NetBox](https://img.shields.io/badge/netbox-4.5%2B-blue.svg)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/netbox-ping.svg)](https://pypi.org/project/netbox-ping/)
 
-A NetBox plugin for pinging and discovering IPs in your network.
-
+A NetBox plugin for pinging, discovering, and monitoring IP addresses directly from your NetBox instance.
 
 ## Features
-- Ping IPs and subnets directly from NetBox
-- Auto-discover new IPs
-- Track IP status with custom fields and tags
-- Bulk scan operations
-- Dark mode compatible UI
 
-## Installation
-```bash
-pip install netbox-ping
-```
-
-## Configuration
-Add to your `configuration.py`:
-```python
-PLUGINS = ['netbox_ping']
-
-PLUGINS_CONFIG = {
-    'netbox_ping': {
-        'coming_soon': True
-    }
-}
-```
-
-## Usage
-1. Install the plugin
-2. Navigate to Plugins > NetBox Ping
-3. Click "Create Required Fields & Tags"
-4. Start scanning your networks!
+- **Ping individual IPs** — one-click ping from any IP address detail page
+- **Scan prefixes** — ping all existing IPs in a prefix at once
+- **Discover new hosts** — scan entire subnets to find and add active IPs not yet in NetBox
+- **Bulk operations** — select multiple prefixes from the list view and scan/discover in bulk
+- **Auto-scan scheduling** — configure recurring scans and discovery globally or per-prefix
+- **Per-prefix schedule overrides** — three modes: Follow Global, Custom On, or Custom Off
+- **DNS resolution** — automatic reverse DNS lookups with configurable DNS servers
+- **Ping Status columns** — sortable status columns injected into the core IP Address and Prefix tables
+- **Status panels** — ping results shown on IP Address and Prefix detail pages
+- **Background jobs** — all scan/discover operations run as NetBox background jobs
+- **Dark mode compatible**
 
 ## Requirements
 
-- NetBox 4.0 or later
-- Python 3.8 or later
-- `ping` command available on the system
+- NetBox **4.5.0** or later
+- Python **3.10** or later
+- `ping` command available on the NetBox server
+- NetBox background worker running (`netbox-rq`)
 
 ## Installation
 
-### Package Installation
+### From PyPI
 
-1. Install the package from your NetBox installation path:
-   ```bash
-   source /opt/netbox/venv/bin/activate
-   cd /opt/netbox
-   pip install git+https://github.com/DenDanskeMine/netbox-prefix-pinger.git
-   ```
+```bash
+source /opt/netbox/venv/bin/activate
+pip install netbox-ping
+```
 
-### Enable the Plugin
+### From source
 
-2. Add the plugin to `PLUGINS` in `/opt/netbox/netbox/netbox/configuration.py`:
-   ```python
-   PLUGINS = [
-       'netbox_ping',
-   ]
-   ```
+```bash
+source /opt/netbox/venv/bin/activate
+pip install git+https://github.com/DenDanskeMine/netbox-ping.git
+```
 
-### Run Migrations
+### Enable the plugin
 
-3. Apply database migrations:
-   ```bash
-   cd /opt/netbox
-   python3 manage.py migrate
-   ```
+Add `netbox_ping` to your NetBox `configuration.py`:
 
-### Collect Static Files
+```python
+PLUGINS = [
+    'netbox_ping',
+]
+```
 
-4. Collect static files:
-   ```bash
-   python3 manage.py collectstatic
-   ```
+### Apply migrations
 
-### Restart NetBox
+```bash
+cd /opt/netbox/netbox
+python3 manage.py migrate
+```
 
-5. Restart the NetBox service:
-   ```bash
-   sudo systemctl restart netbox
-   ```
+### Restart services
+
+```bash
+sudo systemctl restart netbox netbox-rq
+```
 
 ## Usage
 
-1. Navigate to the "Plugins" menu in NetBox
-2. Select "Network Tools" from the dropdown
-3. You'll see a list of all prefixes in your NetBox instance
-4. Two actions are available for each prefix:
-   - **Check Status**: Checks all existing IPs in the prefix
-   - **Scan Subnet**: Discovers and adds new active IPs
+### New settings Page
 
-### Status Indicators
+<img width="2549" height="880" alt="image" src="https://github.com/user-attachments/assets/7eb011aa-d210-4b60-912b-bb69aa4679e8" />
 
-- 🟢 Online Tag: IP is responding to ping
-- 🔴 Offline Tag: IP is not responding
-- Custom Field "Up_Down": Boolean indicator of IP status
+
+### Ping a single IP
+
+Navigate to any IP address in NetBox. Click the **Ping Now** button to ping it immediately. Results appear in the side panel showing reachability, response time, DNS name, and last seen time.
+
+<img width="2266" height="858" alt="image" src="https://github.com/user-attachments/assets/493e4efd-0e65-41fa-93ce-4e51f7822a2a" />
+
+### Scan a prefix
+
+Navigate to a prefix and click the **Ping Subnet** button to ping all existing IPs in that prefix. Or click **Discover IPs** to scan the entire subnet range and automatically create new IP addresses for any responding hosts.
+
+<img width="2256" height="860" alt="image" src="https://github.com/user-attachments/assets/7ed8a9bc-6af6-41ad-94e1-a42688c7455a" />
+
+### Bulk operations
+
+From the prefix list view, select one or more prefixes using the checkboxes, then click **Ping Selected** or **Discover Selected** to scan them all.
+
+<img width="2283" height="389" alt="image" src="https://github.com/user-attachments/assets/149ff73d-0de0-402e-b71c-a070708a317d" />
+
+### View results
+
+- **Plugins > Ping > Ping Results** — table of all individual IP ping results
+- **Plugins > Ping > Scan Results** — table of all prefix scan summaries
+- **Ping Status column** — enable the "Ping Status" column in the IP Address or Prefix table column configuration
+
+### Auto-scan scheduling
+
+1. Go to **Plugins > Ping > Settings**
+2. Enable **Auto-Scan** and/or **Auto-Discover** and choose an interval
+3. Set the **Minimum Prefix Length** to control which prefixes are scanned (default: /24)
+4. The system job runs every minute and dispatches scans for prefixes that are due
+
+### Per-prefix schedule overrides
+
+From a prefix's **Ping Status** tab, you can override the global schedule:
+
+| Mode | Behavior |
+|------|----------|
+| **Follow Global** | Uses whatever the global setting is (default) |
+| **Custom On** | Always scans at a custom interval, regardless of global setting |
+| **Custom Off** | Never auto-scans, even if global is enabled |
 
 ## Configuration
 
-No additional configuration is required. The plugin will automatically:
-- Create required custom fields
-- Create online/offline tags
-- Set up necessary permissions
+### DNS settings
 
-## Permissions
+Configure up to three DNS servers for reverse lookups in **Plugins > Ping > Settings**. DNS lookups are performed on reachable IPs to resolve their hostname.
 
-Users need the following permissions to use the plugin:
-- `ipam.view_prefix`
-- `ipam.view_ipaddress`
+### Auto-scan intervals
+
+Available intervals: 5 minutes, 15 minutes, 30 minutes, hourly, every 6 hours, every 12 hours, daily, weekly.
 
 ## Development
 
-To set up a development environment:
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/netbox-ping.git
-   cd netbox-ping
-   ```
-
-2. Create a virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. Install development dependencies:
-   ```bash
-   pip install -e .
-   ```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+```bash
+git clone https://github.com/DenDanskeMine/netbox-ping.git
+cd netbox-ping
+pip install -e .
+```
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
-If you have any questions or need help, please:
-1. Open an issue on GitHub
-2. Check existing issues for answers
-3. Contact the maintainer
-
-## Acknowledgments
-
-- Built for NetBox (https://github.com/netbox-community/netbox)
-- Inspired by the need for simple IP status tracking, this is my first plugin for NetBox.
-- I'm not a good python developer, so this is probably not the best way to do this.
-- The plugin `netbox-interface-synchronization` gave me a lot of inspiration, code wise, as the offical NetBox development repo had some issues, i couldn't get around.
-- The plugin [netbox-interface-synchronization](https://github.com/NetTech2001/netbox-interface-synchronization/tree/main) is a great plugin, and i recommend using it if you need to synchronize interfaces.
-
+- [Open an issue](https://github.com/DenDanskeMine/netbox-ping/issues) on GitHub
+- Check existing issues for answers

@@ -1,23 +1,21 @@
 from netbox.plugins import PluginConfig
 
-class Config(PluginConfig):
+
+class NetBoxPingConfig(PluginConfig):
     name = 'netbox_ping'
     verbose_name = 'NetBox Ping'
-    description = 'Ping IPs and subnets'
-    version = '0.48'
+    description = 'Ping and discover IP addresses in NetBox'
+    version = '2.0.0'
     author = 'Christian Rose'
-    default_settings = {
-        'coming_soon': True
-    }
-
-    # Register the custom table
-    ipaddress_table = 'netbox_ping.tables.CustomIPAddressTable'
-    
-    # Define which models support custom fields
-    custom_field_models = ['ipaddress']
-
-    # API settings
     base_url = 'netbox-ping'
-    default_app_config = 'netbox_ping.apps.NetBoxPingConfig'
+    min_version = '4.5.0'
+    default_settings = {}
+    required_settings = []
 
-config = Config
+    def ready(self):
+        super().ready()
+        from . import jobs    # noqa: F401
+        from . import tables  # noqa: F401 — registers columns on core tables
+
+
+config = NetBoxPingConfig
