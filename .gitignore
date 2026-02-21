@@ -1,5 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+*.
 
+# Build / Distribution
+dist/
+build/
+*.whl
+
+# Virtual environments
+.env
+.venv
+env/
 venv/
-~/.pypirc
+ENV/
+env.bak/
+venv.bak/
+# Secrets (NEVER commit)
+.env
+.env.*
 .pypirc
-/.pypirc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
