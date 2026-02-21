@@ -92,6 +92,14 @@ From the prefix list view, select one or more prefixes using the checkboxes, the
 
 <img width="2283" height="389" alt="image" src="https://github.com/user-attachments/assets/149ff73d-0de0-402e-b71c-a070708a317d" />
 
+### Custom Status badge
+
+<img width="2257" height="556" alt="image" src="https://github.com/user-attachments/assets/8cf5e98d-de21-4570-a5cc-d0826cdd3762" />
+
+<img width="731" height="441" alt="image" src="https://github.com/user-attachments/assets/45156d3c-d858-4e40-9304-e895ac4897e1" />
+
+
+
 ### View results
 
 - **Plugins > Ping > Ping Results** — table of all individual IP ping results
