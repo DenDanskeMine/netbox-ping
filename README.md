@@ -7,7 +7,7 @@
 
 A NetBox plugin for pinging, discovering, and monitoring IP addresses directly from your NetBox instance.
 
-Check my other Plugin: [NetBox Map](https://github.com/DenDanskeMine/netbox-map) | [Website](https://www.danbyte.net/)
+Check my other Plugin: [NetBox Map](https://github.com/DenDanskeMine/netbox-map) | [Website](https://www.danbyte.net/) | [Demo](https://demo.danbyte.net/)
 
 
 ## Features
