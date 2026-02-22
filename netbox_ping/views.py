@@ -9,9 +9,9 @@ from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
 from ipam.models import Prefix, IPAddress
 
-from .models import PingResult, SubnetScanResult, PluginSettings, PrefixSchedule
-from .tables import PingResultTable, SubnetScanResultTable
-from .filtersets import PingResultFilterSet, SubnetScanResultFilterSet
+from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule
+from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable
+from .filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet
 from .forms import PingResultFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm
 
 logger = logging.getLogger('netbox.netbox_ping')
@@ -38,6 +38,28 @@ class PingResultBulkDeleteView(generic.BulkDeleteView):
     queryset = PingResult.objects.all()
     filterset = PingResultFilterSet
     table = PingResultTable
+
+
+# ─── PingHistory CRUD Views ────────────────────────────────────
+
+class PingHistoryListView(generic.ObjectListView):
+    queryset = PingHistory.objects.select_related('ip_address')
+    table = PingHistoryTable
+    filterset = PingHistoryFilterSet
+
+
+class PingHistoryView(generic.ObjectView):
+    queryset = PingHistory.objects.select_related('ip_address')
+
+
+class PingHistoryDeleteView(generic.ObjectDeleteView):
+    queryset = PingHistory.objects.all()
+
+
+class PingHistoryBulkDeleteView(generic.BulkDeleteView):
+    queryset = PingHistory.objects.all()
+    filterset = PingHistoryFilterSet
+    table = PingHistoryTable
 
 
 # ─── SubnetScanResult CRUD Views ───────────────────────────────
@@ -117,8 +139,11 @@ class IPAddressPingTab(generic.ObjectView):
             ping_result = PingResult.objects.get(ip_address=instance)
         except PingResult.DoesNotExist:
             ping_result = None
+        history = PingHistory.objects.filter(ip_address=instance).select_related('ip_address')[:50]
+        history_table = PingHistoryTable(history, orderable=False)
         return {
             'ping_result': ping_result,
+            'history_table': history_table,
         }
 
 
@@ -283,6 +308,13 @@ class IPPingSingleActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 'last_checked': now,
                 'last_seen': now if ping_data['is_reachable'] else existing_last_seen,
             },
+        )
+        PingHistory.objects.create(
+            ip_address=ip_obj,
+            is_reachable=ping_data['is_reachable'],
+            response_time_ms=ping_data['response_time_ms'],
+            dns_name=dns_name,
+            checked_at=now,
         )
 
         if ping_data['is_reachable']:

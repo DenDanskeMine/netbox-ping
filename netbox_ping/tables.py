@@ -2,7 +2,7 @@ import django_tables2 as tables
 from netbox.tables import NetBoxTable, columns
 from utilities.tables import register_table_column
 from ipam.tables import IPAddressTable, AnnotatedIPAddressTable, PrefixTable
-from .models import PingResult, SubnetScanResult
+from .models import PingResult, PingHistory, SubnetScanResult
 
 
 class PingResultTable(NetBoxTable):
@@ -40,6 +40,41 @@ class PingResultTable(NetBoxTable):
         default_columns = (
             'ip_address', 'is_reachable', 'response_time_ms',
             'dns_name', 'last_seen', 'last_checked',
+        )
+
+
+class PingHistoryTable(NetBoxTable):
+    """Table for the PingHistory list view."""
+
+    ip_address = tables.Column(
+        linkify=True,
+        verbose_name='IP Address',
+    )
+    checked_at = tables.DateTimeColumn(
+        verbose_name='Checked At',
+    )
+    is_reachable = columns.BooleanColumn(
+        verbose_name='Status',
+    )
+    response_time_ms = tables.Column(
+        verbose_name='RTT (ms)',
+    )
+    dns_name = tables.Column(
+        verbose_name='DNS Name',
+    )
+    actions = columns.ActionsColumn(
+        actions=('delete',),
+    )
+
+    class Meta(NetBoxTable.Meta):
+        model = PingHistory
+        fields = (
+            'pk', 'id', 'ip_address', 'checked_at', 'is_reachable',
+            'response_time_ms', 'dns_name', 'actions',
+        )
+        default_columns = (
+            'ip_address', 'checked_at', 'is_reachable',
+            'response_time_ms', 'dns_name',
         )
 
 

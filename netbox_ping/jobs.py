@@ -63,7 +63,7 @@ class SingleIPPingJob(JobRunner):
     def run(self, *args, **kwargs):
         from django.utils import timezone as tz
         from .utils import ping_host, resolve_dns
-        from .models import PingResult
+        from .models import PingResult, PingHistory
 
         ip_obj = self.job.object
         ip_str = str(ip_obj.address.ip)
@@ -97,6 +97,13 @@ class SingleIPPingJob(JobRunner):
                 'last_checked': now,
                 'last_seen': now if ping_data['is_reachable'] else existing_last_seen,
             },
+        )
+        PingHistory.objects.create(
+            ip_address=ip_obj,
+            is_reachable=ping_data['is_reachable'],
+            response_time_ms=ping_data['response_time_ms'],
+            dns_name=dns_name,
+            checked_at=now,
         )
 
         status = 'up' if ping_data['is_reachable'] else 'down'
@@ -192,3 +199,14 @@ class AutoScanDispatcherJob(JobRunner):
             self.logger.info(
                 f'Dispatcher completed: {scan_count} scan(s), {discover_count} discover(s)'
             )
+
+        # Trim ping history to configured max
+        from .models import PingHistory
+        max_records = settings.ping_history_max_records
+        if max_records > 0:
+            total = PingHistory.objects.count()
+            if total > max_records:
+                cutoff_pk = PingHistory.objects.order_by('-checked_at').values_list(
+                    'pk', flat=True
+                )[max_records]
+                PingHistory.objects.filter(pk__lt=cutoff_pk).delete()

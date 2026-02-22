@@ -41,7 +41,7 @@ class PluginSettingsForm(NetBoxModelForm):
             'dns_server1', 'dns_server2', 'dns_server3', 'perform_dns_lookup',
             'auto_scan_enabled', 'auto_scan_interval',
             'auto_discover_enabled', 'auto_discover_interval',
-            'max_prefix_size',
+            'max_prefix_size', 'ping_history_max_records',
         )
 
 

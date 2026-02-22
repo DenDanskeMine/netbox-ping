@@ -110,6 +110,38 @@ class SubnetScanResult(NetBoxModel):
         return round(self.hosts_up / self.total_hosts * 100, 1)
 
 
+class PingHistory(NetBoxModel):
+    """Stores historical ping records for each IP address."""
+
+    ip_address = models.ForeignKey(
+        to='ipam.IPAddress',
+        on_delete=models.CASCADE,
+        related_name='ping_history',
+    )
+    is_reachable = models.BooleanField()
+    response_time_ms = models.FloatField(blank=True, null=True)
+    dns_name = models.CharField(max_length=255, blank=True, default='')
+    checked_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ['-checked_at']
+        verbose_name = 'Ping History'
+        verbose_name_plural = 'Ping History'
+        indexes = [
+            models.Index(fields=['ip_address', '-checked_at']),
+        ]
+
+    def __str__(self):
+        status = 'Up' if self.is_reachable else 'Down'
+        return f'{self.ip_address} — {status} @ {self.checked_at}'
+
+    def get_absolute_url(self):
+        return reverse('plugins:netbox_ping:pinghistory', args=[self.pk])
+
+    def get_status_color(self):
+        return 'success' if self.is_reachable else 'danger'
+
+
 class PluginSettings(models.Model):
     """Singleton model for plugin DNS configuration."""
 
@@ -155,6 +187,11 @@ class PluginSettings(models.Model):
         default=24,
         verbose_name='Minimum Prefix Length',
         help_text='Only auto-scan prefixes with this length or longer (e.g. 24 = /24 and smaller subnets)',
+    )
+    ping_history_max_records = models.IntegerField(
+        default=50000,
+        verbose_name='Max Ping History Records',
+        help_text='Maximum number of ping history records to keep (0 = unlimited)',
     )
 
     class Meta:

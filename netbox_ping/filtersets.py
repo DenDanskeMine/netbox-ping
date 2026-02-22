@@ -1,7 +1,7 @@
 import django_filters
 from django.db import models as db_models
 from netbox.filtersets import NetBoxModelFilterSet
-from .models import PingResult, SubnetScanResult
+from .models import PingResult, PingHistory, SubnetScanResult
 
 
 class PingResultFilterSet(NetBoxModelFilterSet):
@@ -17,6 +17,27 @@ class PingResultFilterSet(NetBoxModelFilterSet):
     class Meta:
         model = PingResult
         fields = ('id', 'is_reachable', 'dns_name', 'ip_address')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            db_models.Q(dns_name__icontains=value)
+        )
+
+
+class PingHistoryFilterSet(NetBoxModelFilterSet):
+    is_reachable = django_filters.BooleanFilter()
+    checked_at_before = django_filters.DateTimeFilter(
+        field_name='checked_at', lookup_expr='lte',
+    )
+    checked_at_after = django_filters.DateTimeFilter(
+        field_name='checked_at', lookup_expr='gte',
+    )
+
+    class Meta:
+        model = PingHistory
+        fields = ('id', 'ip_address', 'is_reachable')
 
     def search(self, queryset, name, value):
         if not value.strip():

@@ -10,6 +10,12 @@ urlpatterns = [
     path('ping-results/<int:pk>/delete/', views.PingResultDeleteView.as_view(), name='pingresult_delete'),
     path('ping-results/delete/', views.PingResultBulkDeleteView.as_view(), name='pingresult_bulk_delete'),
 
+    # PingHistory views
+    path('ping-history/', views.PingHistoryListView.as_view(), name='pinghistory_list'),
+    path('ping-history/<int:pk>/', views.PingHistoryView.as_view(), name='pinghistory'),
+    path('ping-history/<int:pk>/delete/', views.PingHistoryDeleteView.as_view(), name='pinghistory_delete'),
+    path('ping-history/delete/', views.PingHistoryBulkDeleteView.as_view(), name='pinghistory_bulk_delete'),
+
     # SubnetScanResult views
     path('scan-results/', views.SubnetScanResultListView.as_view(), name='subnetscanresult_list'),
     path('scan-results/<int:pk>/', views.SubnetScanResultView.as_view(), name='subnetscanresult'),

@@ -4,7 +4,7 @@
 {% block breadcrumbs %}
   {{ block.super }}
   <li class="breadcrumb-item">
-    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}">Ping Results</a>
+    <a href="{% url 'plugins:netbox_ping:pinghistory_list' %}">Ping History</a>
   </li>
   <li class="breadcrumb-item active">{{ object }}</li>
 {% endblock %}
@@ -13,7 +13,7 @@
 <div class="row">
   <div class="col col-md-6">
     <div class="card">
-      <h5 class="card-header">Ping Result</h5>
+      <h5 class="card-header">Ping History Record</h5>
       <div class="card-body">
         <table class="table table-hover attr-table">
           <tr>
@@ -41,24 +41,10 @@
             <td>{{ object.dns_name|default:"—" }}</td>
           </tr>
           <tr>
-            <th scope="row">Last Seen</th>
-            <td>{{ object.last_seen|default:"Never" }}</td>
-          </tr>
-          <tr>
-            <th scope="row">Last Checked</th>
-            <td>{{ object.last_checked|default:"Never" }}</td>
+            <th scope="row">Checked At</th>
+            <td>{{ object.checked_at }}</td>
           </tr>
         </table>
-      </div>
-    </div>
-  </div>
-  <div class="col col-md-6">
-    <div class="card">
-      <h5 class="card-header">Actions</h5>
-      <div class="card-body">
-        <a href="{% url 'plugins:netbox_ping:ip_ping' pk=object.ip_address.pk %}" class="btn btn-primary">
-          <span class="mdi mdi-lan-check" aria-hidden="true"></span> Ping Now
-        </a>
       </div>
     </div>
   </div>

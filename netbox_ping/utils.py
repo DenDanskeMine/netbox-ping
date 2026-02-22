@@ -57,7 +57,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=20):
 
     Returns dict: {'total': int, 'up': int, 'down': int}
     """
-    from .models import PingResult, SubnetScanResult
+    from .models import PingResult, PingHistory, SubnetScanResult
 
     ip_addresses = list(prefix_obj.get_child_ips().select_related())
     results = []
@@ -89,6 +89,13 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=20):
                 'last_checked': now,
                 'last_seen': now if ping_data['is_reachable'] else existing_last_seen,
             },
+        )
+        PingHistory.objects.create(
+            ip_address=ip_obj,
+            is_reachable=ping_data['is_reachable'],
+            response_time_ms=ping_data['response_time_ms'],
+            dns_name=dns_name,
+            checked_at=now,
         )
         return ping_data
 
@@ -127,7 +134,7 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
     Returns dict: {'discovered': list[str], 'total_scanned': int, 'total_up': int}
     """
     from ipam.models import IPAddress
-    from .models import PingResult, SubnetScanResult
+    from .models import PingResult, PingHistory, SubnetScanResult
 
     network = ip_network(prefix_obj.prefix)
     prefix_length = prefix_obj.prefix.prefixlen
@@ -178,6 +185,13 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
                             dns_name=dns_name,
                             last_checked=now,
                             last_seen=now,
+                        )
+                        PingHistory.objects.create(
+                            ip_address=ip_obj,
+                            is_reachable=True,
+                            response_time_ms=ping_data['response_time_ms'],
+                            dns_name=dns_name,
+                            checked_at=now,
                         )
                         discovered.append(ip_str)
                     except Exception as e:

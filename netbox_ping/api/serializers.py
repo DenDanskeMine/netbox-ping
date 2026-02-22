@@ -1,5 +1,5 @@
 from netbox.api.serializers import NetBoxModelSerializer
-from ..models import PingResult, SubnetScanResult
+from ..models import PingResult, PingHistory, SubnetScanResult
 
 
 class PingResultSerializer(NetBoxModelSerializer):
@@ -11,6 +11,17 @@ class PingResultSerializer(NetBoxModelSerializer):
             'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'ip_address', 'is_reachable')
+
+
+class PingHistorySerializer(NetBoxModelSerializer):
+    class Meta:
+        model = PingHistory
+        fields = (
+            'id', 'url', 'display', 'ip_address', 'is_reachable',
+            'response_time_ms', 'dns_name', 'checked_at',
+            'tags', 'custom_fields', 'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'ip_address', 'is_reachable', 'checked_at')
 
 
 class SubnetScanResultSerializer(NetBoxModelSerializer):
