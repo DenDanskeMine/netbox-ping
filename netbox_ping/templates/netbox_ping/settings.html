@@ -87,6 +87,7 @@
             <th>Discover Mode</th>
             <th>Discover Interval</th>
             <th>Last Scanned</th>
+            <th>Last Discovered</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -133,6 +134,13 @@
             <td>
               {% if item.scan_result and item.scan_result.last_scanned %}
                 {{ item.scan_result.last_scanned|timesince }} ago
+              {% else %}
+                <span class="text-muted">Never</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.scan_result and item.scan_result.last_discovered %}
+                {{ item.scan_result.last_discovered|timesince }} ago
               {% else %}
                 <span class="text-muted">Never</span>
               {% endif %}

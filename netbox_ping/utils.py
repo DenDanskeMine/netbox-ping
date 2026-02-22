@@ -191,7 +191,7 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
             'total_hosts': len(hosts),
             'hosts_up': total_up,
             'hosts_down': len(hosts) - total_up,
-            'last_scanned': timezone.now(),
+            'last_discovered': timezone.now(),
         },
     )
 

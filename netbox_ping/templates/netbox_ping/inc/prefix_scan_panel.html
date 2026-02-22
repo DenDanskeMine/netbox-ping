@@ -21,6 +21,10 @@
         <th scope="row">Last Scanned</th>
         <td>{{ scan_result.last_scanned|default:"Never" }}</td>
       </tr>
+      <tr>
+        <th scope="row">Last Discovered</th>
+        <td>{{ scan_result.last_discovered|default:"Never" }}</td>
+      </tr>
     </table>
     {% else %}
     <p class="text-muted mb-0">No scan data available.</p>

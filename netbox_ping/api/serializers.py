@@ -18,7 +18,7 @@ class SubnetScanResultSerializer(NetBoxModelSerializer):
         model = SubnetScanResult
         fields = (
             'id', 'url', 'display', 'prefix', 'total_hosts', 'hosts_up',
-            'hosts_down', 'last_scanned',
+            'hosts_down', 'last_scanned', 'last_discovered',
             'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'prefix', 'hosts_up', 'total_hosts')

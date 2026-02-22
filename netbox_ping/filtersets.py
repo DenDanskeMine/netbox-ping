@@ -33,6 +33,12 @@ class SubnetScanResultFilterSet(NetBoxModelFilterSet):
     last_scanned_after = django_filters.DateTimeFilter(
         field_name='last_scanned', lookup_expr='gte',
     )
+    last_discovered_before = django_filters.DateTimeFilter(
+        field_name='last_discovered', lookup_expr='lte',
+    )
+    last_discovered_after = django_filters.DateTimeFilter(
+        field_name='last_discovered', lookup_expr='gte',
+    )
 
     class Meta:
         model = SubnetScanResult

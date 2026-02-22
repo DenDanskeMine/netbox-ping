@@ -86,6 +86,11 @@ class SubnetScanResult(NetBoxModel):
         null=True,
         verbose_name='Last Scanned',
     )
+    last_discovered = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Last Discovered',
+    )
 
     class Meta:
         ordering = ['-last_scanned']

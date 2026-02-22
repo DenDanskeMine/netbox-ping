@@ -153,6 +153,7 @@ class AutoScanDispatcherJob(JobRunner):
             schedule = prefix_schedules.get(prefix.pk)
             scan_result = scan_results.get(prefix.pk)
             last_scanned = scan_result.last_scanned if scan_result else None
+            last_discovered = scan_result.last_discovered if scan_result else None
 
             # Determine effective settings for this prefix
             if schedule:
@@ -179,7 +180,7 @@ class AutoScanDispatcherJob(JobRunner):
 
             # Run discover if due
             if discover_enabled and discover_interval > 0:
-                if last_scanned is None or (now - last_scanned) >= timedelta(minutes=discover_interval):
+                if last_discovered is None or (now - last_discovered) >= timedelta(minutes=discover_interval):
                     try:
                         self.logger.info(f'Auto-discovering {prefix.prefix}')
                         discover_prefix(prefix, dns_servers=dns_servers, perform_dns=perform_dns)

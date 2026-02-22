@@ -54,6 +54,7 @@ class SubnetScanResultTable(NetBoxTable):
     hosts_up = tables.Column(verbose_name='Hosts Up')
     hosts_down = tables.Column(verbose_name='Hosts Down')
     last_scanned = tables.DateTimeColumn(verbose_name='Last Scanned')
+    last_discovered = tables.DateTimeColumn(verbose_name='Last Discovered')
     actions = columns.ActionsColumn(
         actions=('delete',),
     )
@@ -62,7 +63,7 @@ class SubnetScanResultTable(NetBoxTable):
         model = SubnetScanResult
         fields = (
             'pk', 'id', 'prefix', 'total_hosts', 'hosts_up',
-            'hosts_down', 'last_scanned', 'actions',
+            'hosts_down', 'last_scanned', 'last_discovered', 'actions',
         )
         default_columns = (
             'prefix', 'total_hosts', 'hosts_up', 'hosts_down', 'last_scanned',

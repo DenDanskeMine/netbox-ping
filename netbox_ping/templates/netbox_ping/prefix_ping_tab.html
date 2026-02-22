@@ -71,6 +71,16 @@
             {% endif %}
           </td>
         </tr>
+        <tr>
+          <th scope="row">Last Discovered</th>
+          <td>
+            {% if scan_result and scan_result.last_discovered %}
+              {{ scan_result.last_discovered|timesince }} ago
+            {% else %}
+              <span class="text-muted">Never</span>
+            {% endif %}
+          </td>
+        </tr>
       </table>
       <div class="card-footer text-end">
         <button type="submit" class="btn btn-sm btn-primary">
