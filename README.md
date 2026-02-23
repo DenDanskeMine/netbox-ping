@@ -168,17 +168,18 @@ sudo systemctl restart netbox-rq
 
 ### RQ worker count
 
-By default NetBox runs a single background worker. To process multiple scan jobs in parallel, increase the worker count in `/etc/systemd/system/netbox-rq.service`:
+By default NetBox runs a single background worker. To process multiple scan jobs in parallel, you can run additional worker instances. Copy the default service file to create extra workers:
 
-```ini
-ExecStart=/opt/netbox/venv/bin/python3 /opt/netbox/netbox/manage.py rqworker high default low --worker-count 3
+```bash
+sudo cp /etc/systemd/system/netbox-rq.service /etc/systemd/system/netbox-rq2.service
+sudo cp /etc/systemd/system/netbox-rq.service /etc/systemd/system/netbox-rq3.service
 ```
 
-Then reload and restart:
+Then enable and start the new workers:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl restart netbox-rq
+sudo systemctl enable --now netbox-rq2 netbox-rq3
 ```
 
 ## Development

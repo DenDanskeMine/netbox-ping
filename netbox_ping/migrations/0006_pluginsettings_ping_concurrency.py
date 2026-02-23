@@ -17,13 +17,4 @@ class Migration(migrations.Migration):
                 verbose_name='Concurrent Pings',
             ),
         ),
-        migrations.AddField(
-            model_name='pluginsettings',
-            name='ping_timeout',
-            field=models.FloatField(
-                default=1.0,
-                help_text='How long to wait for a ping response before marking as down (e.g. 0.5 for LAN, 1.0 for WAN)',
-                verbose_name='Ping Timeout (seconds)',
-            ),
-        ),
     ]

@@ -129,7 +129,7 @@ class SingleIPPingJob(JobRunner):
 class AutoScanDispatcherJob(JobRunner):
     """
     System job that runs every minute. Checks which prefixes are due
-    for scanning or discovery and runs them directly.
+    for scanning or discovery and enqueues background jobs for them.
     """
 
     class Meta:
@@ -138,7 +138,6 @@ class AutoScanDispatcherJob(JobRunner):
     def run(self, *args, **kwargs):
         from ipam.models import Prefix
         from .models import PrefixSchedule, SubnetScanResult
-        from .utils import scan_prefix, discover_prefix
 
         settings = PluginSettings.load()
 
@@ -150,8 +149,6 @@ class AutoScanDispatcherJob(JobRunner):
                 return
 
         now = timezone.now()
-        dns_servers = settings.get_dns_servers()
-        perform_dns = settings.perform_dns_lookup
 
         # Only consider prefixes at or smaller than the configured max size
         prefixes = Prefix.objects.filter(
@@ -190,38 +187,52 @@ class AutoScanDispatcherJob(JobRunner):
                 discover_enabled = settings.auto_discover_enabled
                 discover_interval = settings.auto_discover_interval
 
-            # Run scan if due
+            # Enqueue scan job if due
             if scan_enabled and scan_interval > 0:
                 if last_scanned is None or (now - last_scanned) >= timedelta(minutes=scan_interval):
                     try:
-                        self.logger.info(f'Auto-scanning {prefix.prefix}')
-                        scan_prefix(prefix, dns_servers=dns_servers, perform_dns=perform_dns, max_workers=settings.ping_concurrency, ping_timeout=settings.ping_timeout)
+                        self.logger.info(f'Enqueuing auto-scan for {prefix.prefix}')
+                        PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, job_timeout=1800)
                         scan_count += 1
                     except Exception as e:
-                        self.logger.error(f'Auto-scan failed for {prefix.prefix}: {e}')
+                        self.logger.error(f'Failed to enqueue auto-scan for {prefix.prefix}: {e}')
 
-            # Run discover if due
+            # Enqueue discover job if due
             if discover_enabled and discover_interval > 0:
                 if last_discovered is None or (now - last_discovered) >= timedelta(minutes=discover_interval):
                     try:
-                        self.logger.info(f'Auto-discovering {prefix.prefix}')
-                        discover_prefix(prefix, dns_servers=dns_servers, perform_dns=perform_dns, max_workers=settings.ping_concurrency, ping_timeout=settings.ping_timeout)
+                        self.logger.info(f'Enqueuing auto-discover for {prefix.prefix}')
+                        PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, job_timeout=1800)
                         discover_count += 1
                     except Exception as e:
-                        self.logger.error(f'Auto-discover failed for {prefix.prefix}: {e}')
+                        self.logger.error(f'Failed to enqueue auto-discover for {prefix.prefix}: {e}')
 
         if scan_count or discover_count:
-            self.logger.info(
-                f'Dispatcher completed: {scan_count} scan(s), {discover_count} discover(s)'
-            )
+            msg = f'Dispatcher enqueued {scan_count} scan(s), {discover_count} discover(s)'
+            self.logger.info(msg)
+            print(f'[Dispatcher] {msg}', flush=True)
+        else:
+            print('[Dispatcher] No prefixes due for scanning', flush=True)
 
-        # Trim ping history to configured max
+        # Trim ping history to configured max (raw SQL to avoid ORM overhead)
         from .models import PingHistory
         max_records = settings.ping_history_max_records
         if max_records > 0:
             total = PingHistory.objects.count()
             if total > max_records:
-                cutoff_pk = PingHistory.objects.order_by('-checked_at').values_list(
-                    'pk', flat=True
-                )[max_records]
-                PingHistory.objects.filter(pk__lt=cutoff_pk).delete()
+                to_delete = total - max_records
+                print(f'[Dispatcher] Trimming {to_delete} old history records', flush=True)
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        DELETE FROM netbox_ping_pinghistory
+                        WHERE id NOT IN (
+                            SELECT id FROM netbox_ping_pinghistory
+                            ORDER BY checked_at DESC
+                            LIMIT %s
+                        )
+                    """, [max_records])
+                    deleted = cursor.rowcount
+                print(f'[Dispatcher] Trimmed {deleted} history records', flush=True)
+
+        print('[Dispatcher] Done', flush=True)
