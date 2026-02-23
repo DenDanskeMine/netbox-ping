@@ -146,6 +146,29 @@ Configure up to three DNS servers for reverse lookups in **Plugins > Ping > Sett
 
 Available intervals: 5 minutes, 15 minutes, 30 minutes, hourly, every 6 hours, every 12 hours, daily, weekly.
 
+## Performance Tuning
+
+### Concurrent pings per job
+
+Each scan job pings multiple hosts in parallel (default: 500 threads). To change this, edit `netbox_ping/utils.py` and adjust the `max_workers` parameter on `scan_prefix()` and `discover_prefix()`.
+
+(Will add a settings feature fo rthis later, this is temporary.) 
+
+### RQ worker count
+
+By default NetBox runs a single background worker. To process multiple scan jobs in parallel, increase the worker count in `/etc/systemd/system/netbox-rq.service`:
+
+```ini
+ExecStart=/opt/netbox/venv/bin/python3 /opt/netbox/netbox/manage.py rqworker high default low --worker-count 3
+```
+
+Then reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart netbox-rq
+```
+
 ## Development
 
 ```bash

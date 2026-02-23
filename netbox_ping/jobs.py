@@ -23,12 +23,15 @@ class PrefixScanJob(JobRunner):
         settings = PluginSettings.load()
 
         self.logger.info(f'Starting scan of prefix {prefix.prefix}')
+        print(f'[Prefix Scan] Starting scan of {prefix.prefix}', flush=True)
         result = scan_prefix(
             prefix,
             dns_servers=settings.get_dns_servers(),
             perform_dns=settings.perform_dns_lookup,
+            job_logger=self.logger,
         )
         self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up')
+        print(f'[Prefix Scan] Complete: {result["up"]}/{result["total"]} hosts up', flush=True)
 
 
 class PrefixDiscoverJob(JobRunner):
@@ -45,14 +48,20 @@ class PrefixDiscoverJob(JobRunner):
         settings = PluginSettings.load()
 
         self.logger.info(f'Starting discovery of prefix {prefix.prefix}')
+        print(f'[Prefix Discover] Starting discovery of {prefix.prefix}', flush=True)
         result = discover_prefix(
             prefix,
             dns_servers=settings.get_dns_servers(),
             perform_dns=settings.perform_dns_lookup,
+            job_logger=self.logger,
         )
         self.logger.info(
             f'Discovery complete: found {len(result["discovered"])} new IPs '
             f'out of {result["total_scanned"]} scanned'
+        )
+        print(
+            f'[Prefix Discover] Complete: {len(result["discovered"])} new IPs '
+            f'out of {result["total_scanned"]} scanned', flush=True
         )
 
 

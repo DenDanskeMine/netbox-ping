@@ -157,7 +157,7 @@ class PrefixScanActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
         from .jobs import PrefixScanJob
 
         prefix = get_object_or_404(Prefix, pk=pk)
-        PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk})
+        PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
         messages.info(request, f'Scan job enqueued for {prefix.prefix}')
         return redirect(prefix.get_absolute_url() + 'ping/')
 
@@ -170,7 +170,7 @@ class PrefixDiscoverActionView(LoginRequiredMixin, PermissionRequiredMixin, View
         from .jobs import PrefixDiscoverJob
 
         prefix = get_object_or_404(Prefix, pk=pk)
-        PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk})
+        PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
         messages.info(request, f'Discover job enqueued for {prefix.prefix}')
         return redirect(prefix.get_absolute_url() + 'ping/')
 
@@ -190,7 +190,7 @@ class BulkPrefixScanView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         count = 0
         for prefix in prefixes:
-            PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk})
+            PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
             count += 1
 
         messages.info(
@@ -215,7 +215,7 @@ class BulkPrefixDiscoverView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         count = 0
         for prefix in prefixes:
-            PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk})
+            PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
             count += 1
 
         messages.info(
