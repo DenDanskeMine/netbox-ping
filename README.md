@@ -70,6 +70,15 @@ python3 manage.py migrate
 sudo systemctl restart netbox netbox-rq
 ```
 
+### INFO
+
+If you are upgrading from V1 and getting migration errors, please run the following:
+
+```
+sudo -u postgres psql netbox -c "DELETE FROM django_migrations WHERE app = 'netbox_ping';"
+sudo /opt/netbox/venv/bin/python manage.py migrate netbox_ping
+```
+
 ## Usage
 
 ### New settings Page
