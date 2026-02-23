@@ -154,21 +154,11 @@ class PrefixScanActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request, pk):
-        from .utils import scan_prefix
+        from .jobs import PrefixScanJob
 
         prefix = get_object_or_404(Prefix, pk=pk)
-        settings = PluginSettings.load()
-
-        result = scan_prefix(
-            prefix,
-            dns_servers=settings.get_dns_servers(),
-            perform_dns=settings.perform_dns_lookup,
-        )
-        messages.success(
-            request,
-            f'Scan complete for {prefix.prefix}: '
-            f'{result["up"]}/{result["total"]} hosts up'
-        )
+        PrefixScanJob.enqueue(instance=prefix, user=request.user)
+        messages.info(request, f'Scan job enqueued for {prefix.prefix}')
         return redirect(prefix.get_absolute_url() + 'ping/')
 
 
@@ -177,23 +167,11 @@ class PrefixDiscoverActionView(LoginRequiredMixin, PermissionRequiredMixin, View
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request, pk):
-        from .utils import discover_prefix
+        from .jobs import PrefixDiscoverJob
 
         prefix = get_object_or_404(Prefix, pk=pk)
-        settings = PluginSettings.load()
-
-        result = discover_prefix(
-            prefix,
-            dns_servers=settings.get_dns_servers(),
-            perform_dns=settings.perform_dns_lookup,
-        )
-        if result['discovered']:
-            messages.success(
-                request,
-                f'Discovered {len(result["discovered"])} new IPs in {prefix.prefix}'
-            )
-        else:
-            messages.info(request, f'No new IPs discovered in {prefix.prefix}')
+        PrefixDiscoverJob.enqueue(instance=prefix, user=request.user)
+        messages.info(request, f'Discover job enqueued for {prefix.prefix}')
         return redirect(prefix.get_absolute_url() + 'ping/')
 
 
@@ -202,7 +180,7 @@ class BulkPrefixScanView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request):
-        from .utils import scan_prefix
+        from .jobs import PrefixScanJob
 
         pks = request.GET.getlist('pk')
         if pks:
@@ -210,24 +188,14 @@ class BulkPrefixScanView(LoginRequiredMixin, PermissionRequiredMixin, View):
         else:
             prefixes = Prefix.objects.all()
 
-        settings = PluginSettings.load()
-        total_up = 0
-        total_hosts = 0
         count = 0
         for prefix in prefixes:
-            result = scan_prefix(
-                prefix,
-                dns_servers=settings.get_dns_servers(),
-                perform_dns=settings.perform_dns_lookup,
-            )
-            total_up += result['up']
-            total_hosts += result['total']
+            PrefixScanJob.enqueue(instance=prefix, user=request.user)
             count += 1
 
-        messages.success(
+        messages.info(
             request,
-            f'Bulk scan complete: {count} prefixes scanned, '
-            f'{total_up}/{total_hosts} hosts up'
+            f'Enqueued scan jobs for {count} prefixes'
         )
         return redirect('/ipam/prefixes/')
 
@@ -237,7 +205,7 @@ class BulkPrefixDiscoverView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request):
-        from .utils import discover_prefix
+        from .jobs import PrefixDiscoverJob
 
         pks = request.GET.getlist('pk')
         if pks:
@@ -245,29 +213,15 @@ class BulkPrefixDiscoverView(LoginRequiredMixin, PermissionRequiredMixin, View):
         else:
             prefixes = Prefix.objects.all()
 
-        settings = PluginSettings.load()
-        total_discovered = 0
         count = 0
         for prefix in prefixes:
-            result = discover_prefix(
-                prefix,
-                dns_servers=settings.get_dns_servers(),
-                perform_dns=settings.perform_dns_lookup,
-            )
-            total_discovered += len(result['discovered'])
+            PrefixDiscoverJob.enqueue(instance=prefix, user=request.user)
             count += 1
 
-        if total_discovered:
-            messages.success(
-                request,
-                f'Bulk discover complete: {total_discovered} new IPs found '
-                f'across {count} prefixes'
-            )
-        else:
-            messages.info(
-                request,
-                f'No new IPs discovered across {count} prefixes'
-            )
+        messages.info(
+            request,
+            f'Enqueued discover jobs for {count} prefixes'
+        )
         return redirect('/ipam/prefixes/')
 
 

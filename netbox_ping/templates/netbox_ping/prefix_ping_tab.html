@@ -8,9 +8,10 @@
     <a href="{% url 'plugins:netbox_ping:prefix_scan' pk=object.pk %}" class="btn btn-primary me-2">
       <span class="mdi mdi-lan-check" aria-hidden="true"></span> Ping All IPs
     </a>
-    <a href="{% url 'plugins:netbox_ping:prefix_discover' pk=object.pk %}" class="btn btn-success">
+    <a href="{% url 'plugins:netbox_ping:prefix_discover' pk=object.pk %}" class="btn btn-success me-2">
       <span class="mdi mdi-magnify-scan" aria-hidden="true"></span> Discover New IPs
     </a>
+    <span class="text-muted small align-self-center">Jobs run in the background — check <a href="/core/jobs/">Jobs</a> for status</span>
   </div>
 </div>
 
