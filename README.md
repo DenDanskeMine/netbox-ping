@@ -150,7 +150,7 @@ Available intervals: 5 minutes, 15 minutes, 30 minutes, hourly, every 6 hours, e
 
 ### Concurrent pings per job
 
-Each scan job pings multiple hosts in parallel (default: 500 threads). To change this, edit `netbox_ping/utils.py` and adjust the `max_workers` parameter on `scan_prefix()` and `discover_prefix()`.
+Each scan job pings multiple hosts in parallel (default: 100 threads). To change this, edit `netbox_ping/utils.py` and adjust the `max_workers` parameter on `scan_prefix()` and `discover_prefix()`.
 
 (Will add a settings feature fo rthis later, this is temporary.) 
 
