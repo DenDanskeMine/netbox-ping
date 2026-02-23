@@ -15,10 +15,11 @@ class PrefixScanJob(JobRunner):
     class Meta:
         name = 'Prefix Scan'
 
-    def run(self, *args, **kwargs):
+    def run(self, data=None, **kwargs):
+        from ipam.models import Prefix
         from .utils import scan_prefix
 
-        prefix = self.job.object
+        prefix = Prefix.objects.get(pk=data['prefix_id'])
         settings = PluginSettings.load()
 
         self.logger.info(f'Starting scan of prefix {prefix.prefix}')
@@ -36,10 +37,11 @@ class PrefixDiscoverJob(JobRunner):
     class Meta:
         name = 'Prefix Discover'
 
-    def run(self, *args, **kwargs):
+    def run(self, data=None, **kwargs):
+        from ipam.models import Prefix
         from .utils import discover_prefix
 
-        prefix = self.job.object
+        prefix = Prefix.objects.get(pk=data['prefix_id'])
         settings = PluginSettings.load()
 
         self.logger.info(f'Starting discovery of prefix {prefix.prefix}')
