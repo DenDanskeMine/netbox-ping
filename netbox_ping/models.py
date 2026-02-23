@@ -193,6 +193,16 @@ class PluginSettings(models.Model):
         verbose_name='Max Ping History Records',
         help_text='Maximum number of ping history records to keep (0 = unlimited)',
     )
+    ping_concurrency = models.IntegerField(
+        default=100,
+        verbose_name='Concurrent Pings',
+        help_text='Number of simultaneous ping threads per scan job (increase if you raised LimitNOFILE for netbox-rq)',
+    )
+    ping_timeout = models.FloatField(
+        default=1.0,
+        verbose_name='Ping Timeout (seconds)',
+        help_text='How long to wait for a ping response before marking as down (e.g. 0.5 for LAN, 1.0 for WAN)',
+    )
 
     class Meta:
         verbose_name = 'Plugin Settings'

@@ -28,6 +28,8 @@ class PrefixScanJob(JobRunner):
             prefix,
             dns_servers=settings.get_dns_servers(),
             perform_dns=settings.perform_dns_lookup,
+            max_workers=settings.ping_concurrency,
+            ping_timeout=settings.ping_timeout,
             job_logger=self.logger,
         )
         self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up')
@@ -53,6 +55,8 @@ class PrefixDiscoverJob(JobRunner):
             prefix,
             dns_servers=settings.get_dns_servers(),
             perform_dns=settings.perform_dns_lookup,
+            max_workers=settings.ping_concurrency,
+            ping_timeout=settings.ping_timeout,
             job_logger=self.logger,
         )
         self.logger.info(
@@ -191,7 +195,7 @@ class AutoScanDispatcherJob(JobRunner):
                 if last_scanned is None or (now - last_scanned) >= timedelta(minutes=scan_interval):
                     try:
                         self.logger.info(f'Auto-scanning {prefix.prefix}')
-                        scan_prefix(prefix, dns_servers=dns_servers, perform_dns=perform_dns)
+                        scan_prefix(prefix, dns_servers=dns_servers, perform_dns=perform_dns, max_workers=settings.ping_concurrency, ping_timeout=settings.ping_timeout)
                         scan_count += 1
                     except Exception as e:
                         self.logger.error(f'Auto-scan failed for {prefix.prefix}: {e}')
@@ -201,7 +205,7 @@ class AutoScanDispatcherJob(JobRunner):
                 if last_discovered is None or (now - last_discovered) >= timedelta(minutes=discover_interval):
                     try:
                         self.logger.info(f'Auto-discovering {prefix.prefix}')
-                        discover_prefix(prefix, dns_servers=dns_servers, perform_dns=perform_dns)
+                        discover_prefix(prefix, dns_servers=dns_servers, perform_dns=perform_dns, max_workers=settings.ping_concurrency, ping_timeout=settings.ping_timeout)
                         discover_count += 1
                     except Exception as e:
                         self.logger.error(f'Auto-discover failed for {prefix.prefix}: {e}')

@@ -42,6 +42,7 @@ class PluginSettingsForm(NetBoxModelForm):
             'auto_scan_enabled', 'auto_scan_interval',
             'auto_discover_enabled', 'auto_discover_interval',
             'max_prefix_size', 'ping_history_max_records',
+            'ping_concurrency', 'ping_timeout',
         )
 
 

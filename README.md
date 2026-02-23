@@ -150,9 +150,21 @@ Available intervals: 5 minutes, 15 minutes, 30 minutes, hourly, every 6 hours, e
 
 ### Concurrent pings per job
 
-Each scan job pings multiple hosts in parallel (default: 100 threads). To change this, edit `netbox_ping/utils.py` and adjust the `max_workers` parameter on `scan_prefix()` and `discover_prefix()`.
+Each scan job pings multiple hosts in parallel. The thread count is configurable in **Plugins > Ping > Settings** under **Concurrent Pings** (default: 100).
 
-(Will add a settings feature fo rthis later, this is temporary.) 
+To go above ~240, you need to raise the file descriptor limit for the `netbox-rq` service. Add `LimitNOFILE=65535` to `/etc/systemd/system/netbox-rq.service`:
+
+```ini
+[Service]
+LimitNOFILE=65535
+```
+
+Then reload, restart, and increase the setting in the UI:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart netbox-rq
+```
 
 ### RQ worker count
 

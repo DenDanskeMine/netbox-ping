@@ -45,7 +45,7 @@
         </h5>
         <div class="card-body">
           {% for field in form %}
-            {% if field.name in 'auto_scan_enabled,auto_scan_interval,auto_discover_enabled,auto_discover_interval,max_prefix_size,ping_history_max_records' %}
+            {% if field.name in 'auto_scan_enabled,auto_scan_interval,auto_discover_enabled,auto_discover_interval,max_prefix_size,ping_history_max_records,ping_concurrency,ping_timeout' %}
             <div class="mb-3">
               <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
               {{ field }}
