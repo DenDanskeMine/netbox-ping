@@ -33,7 +33,7 @@ class SubnetScanResultFilterForm(NetBoxModelFilterSetForm):
 
 
 class PluginSettingsForm(NetBoxModelForm):
-    """Form for editing DNS + scheduling settings."""
+    """Form for editing DNS + scheduling + email settings."""
 
     class Meta:
         model = PluginSettings
@@ -44,7 +44,16 @@ class PluginSettingsForm(NetBoxModelForm):
             'auto_discover_enabled', 'auto_discover_interval',
             'max_prefix_size', 'ping_history_max_records',
             'ping_concurrency', 'ping_timeout', 'skip_reserved_ips',
+            'email_notifications_enabled', 'email_recipients',
+            'email_digest_interval', 'email_include_details',
+            'email_utilization_threshold', 'email_on_change_only',
         )
+        widgets = {
+            'email_recipients': forms.Textarea(attrs={
+                'rows': 3,
+                'placeholder': 'admin@example.com, noc@example.com',
+            }),
+        }
 
 
 class PrefixScheduleForm(forms.ModelForm):

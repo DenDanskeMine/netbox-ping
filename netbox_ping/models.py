@@ -18,6 +18,22 @@ INTERVAL_CHOICES = [
     (10080, 'Weekly'),
 ]
 
+DIGEST_INTERVAL_CHOICES = [
+    (0, 'Disabled'),
+    (60, 'Hourly'),
+    (360, 'Every 6 hours'),
+    (720, 'Every 12 hours'),
+    (1440, 'Daily'),
+    (10080, 'Weekly'),
+]
+
+SCAN_EVENT_TYPE_CHOICES = [
+    ('ip_went_down', 'IP Went Down'),
+    ('ip_came_up', 'IP Came Up'),
+    ('ip_discovered', 'IP Discovered'),
+    ('dns_changed', 'DNS Changed'),
+]
+
 
 class PingResult(NetBoxModel):
     """Stores per-IP ping result. One record per IPAddress."""
@@ -179,6 +195,43 @@ class DnsHistory(models.Model):
         return f'{self.ip_address} — "{self.old_dns_name}" → "{self.new_dns_name}"'
 
 
+class ScanEvent(models.Model):
+    """Lightweight event accumulator for email digest notifications."""
+
+    event_type = models.CharField(
+        max_length=20,
+        choices=SCAN_EVENT_TYPE_CHOICES,
+    )
+    prefix = models.ForeignKey(
+        to='ipam.Prefix',
+        on_delete=models.CASCADE,
+        related_name='+',
+        blank=True,
+        null=True,
+    )
+    ip_address = models.ForeignKey(
+        to='ipam.IPAddress',
+        on_delete=models.CASCADE,
+        related_name='+',
+        blank=True,
+        null=True,
+    )
+    detail = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    digest_sent = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Scan Event'
+        verbose_name_plural = 'Scan Events'
+        indexes = [
+            models.Index(fields=['digest_sent', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_event_type_display()} — {self.ip_address or self.prefix}'
+
+
 class PluginSettings(models.Model):
     """Singleton model for plugin DNS configuration."""
 
@@ -261,6 +314,45 @@ class PluginSettings(models.Model):
         default=True,
         verbose_name='Preserve DNS if Alive',
         help_text='Keep existing DNS name if host is alive but DNS lookup fails (overrides clear)',
+    )
+
+    # ── Email Notifications ──
+    email_notifications_enabled = models.BooleanField(
+        default=False,
+        verbose_name='Enable Email Notifications',
+        help_text='Send periodic digest emails summarizing scan results and changes',
+    )
+    email_recipients = models.TextField(
+        blank=True,
+        default='',
+        verbose_name='Email Recipients',
+        help_text='Comma-separated email addresses to receive digest reports',
+    )
+    email_digest_interval = models.IntegerField(
+        default=1440,
+        choices=DIGEST_INTERVAL_CHOICES,
+        verbose_name='Digest Interval',
+        help_text='How often to send digest emails (0 = disabled)',
+    )
+    email_include_details = models.BooleanField(
+        default=True,
+        verbose_name='Include Details',
+        help_text='Include per-IP change tables in digest emails',
+    )
+    email_utilization_threshold = models.IntegerField(
+        default=90,
+        verbose_name='Utilization Alert Threshold (%)',
+        help_text='Include prefixes at or above this utilization in digests (0 = disabled)',
+    )
+    email_on_change_only = models.BooleanField(
+        default=True,
+        verbose_name='Send on Change Only',
+        help_text='Skip sending digest if there are no events or high-utilization alerts',
+    )
+    email_last_digest_sent = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Last Digest Sent',
     )
 
     class Meta:

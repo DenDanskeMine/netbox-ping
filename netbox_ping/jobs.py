@@ -82,7 +82,7 @@ class SingleIPPingJob(JobRunner):
     def run(self, *args, **kwargs):
         from django.utils import timezone as tz
         from .utils import ping_host, resolve_dns, _compute_dns_sync
-        from .models import PingResult, PingHistory, DnsHistory
+        from .models import PingResult, PingHistory, DnsHistory, ScanEvent
 
         ip_obj = self.job.object
         ip_str = str(ip_obj.address.ip)
@@ -103,6 +103,26 @@ class SingleIPPingJob(JobRunner):
         try:
             existing = PingResult.objects.get(ip_address=ip_obj)
             existing_last_seen = existing.last_seen
+            # Detect state changes for digest events
+            if not existing.is_skipped:
+                if existing.is_reachable and not ping_data['is_reachable']:
+                    ScanEvent.objects.create(
+                        event_type='ip_went_down',
+                        ip_address=ip_obj,
+                        detail={
+                            'dns_name': existing.dns_name or '',
+                            'last_response_ms': existing.response_time_ms,
+                        },
+                    )
+                elif not existing.is_reachable and ping_data['is_reachable']:
+                    ScanEvent.objects.create(
+                        event_type='ip_came_up',
+                        ip_address=ip_obj,
+                        detail={
+                            'dns_name': dns_name or existing.dns_name or '',
+                            'response_time_ms': ping_data['response_time_ms'],
+                        },
+                    )
         except PingResult.DoesNotExist:
             pass
 
@@ -143,6 +163,14 @@ class SingleIPPingJob(JobRunner):
                     old_dns_name=current_netbox_dns,
                     new_dns_name=new_value,
                     changed_at=now,
+                )
+                ScanEvent.objects.create(
+                    event_type='dns_changed',
+                    ip_address=ip_obj,
+                    detail={
+                        'old_dns': current_netbox_dns,
+                        'new_dns': new_value,
+                    },
                 )
 
         status = 'up' if ping_data['is_reachable'] else 'down'
@@ -259,4 +287,119 @@ class AutoScanDispatcherJob(JobRunner):
                     deleted = cursor.rowcount
                 print(f'[Dispatcher] Trimmed {deleted} history records', flush=True)
 
+        # Prune old ScanEvent records (older than 7 days)
+        from .models import ScanEvent
+        cutoff = now - timedelta(days=7)
+        pruned = ScanEvent.objects.filter(created_at__lt=cutoff).delete()[0]
+        if pruned:
+            print(f'[Dispatcher] Pruned {pruned} old scan event(s)', flush=True)
+
         print('[Dispatcher] Done', flush=True)
+
+
+@system_job(interval=60)
+class EmailDigestJob(JobRunner):
+    """
+    System job that runs every hour. Checks if a digest email is due
+    based on the configured interval, collects unsent ScanEvents,
+    and sends a summary email.
+    """
+
+    class Meta:
+        name = 'Email Digest'
+
+    def run(self, *args, **kwargs):
+        from django.core.mail import send_mail
+        from .models import ScanEvent, SubnetScanResult
+        from .email import build_digest_email
+
+        settings = PluginSettings.load()
+
+        # Gate 1: notifications enabled?
+        if not settings.email_notifications_enabled:
+            return
+
+        # Gate 2: any recipients?
+        raw_recipients = settings.email_recipients.strip()
+        if not raw_recipients:
+            return
+        recipients = [r.strip() for r in raw_recipients.split(',') if r.strip()]
+        if not recipients:
+            return
+
+        # Gate 3: interval > 0 and time elapsed?
+        interval = settings.email_digest_interval
+        if interval <= 0:
+            return
+
+        now = timezone.now()
+        if settings.email_last_digest_sent:
+            next_due = settings.email_last_digest_sent + timedelta(minutes=interval)
+            if now < next_due:
+                return
+
+        period_start = settings.email_last_digest_sent or (now - timedelta(minutes=interval))
+        period_end = now
+
+        # Collect unsent events
+        events = list(
+            ScanEvent.objects.filter(digest_sent=False)
+            .select_related('ip_address', 'prefix')
+            .order_by('created_at')
+        )
+
+        # Collect high-utilization prefixes
+        high_util = []
+        threshold = settings.email_utilization_threshold
+        if threshold > 0:
+            for ssr in SubnetScanResult.objects.select_related('prefix').all():
+                if ssr.total_hosts > 0 and ssr.utilization >= threshold:
+                    high_util.append(ssr)
+
+        # Gate 4: skip if no changes and on_change_only
+        if settings.email_on_change_only and not events and not high_util:
+            # Still update timestamp so we don't re-check old window
+            settings.email_last_digest_sent = now
+            settings.save(update_fields=['email_last_digest_sent'])
+            return
+
+        # Build email
+        subject, html_body, text_body = build_digest_email(
+            events, high_util, settings.email_include_details,
+            period_start, period_end, threshold,
+        )
+
+        # Send
+        try:
+            from django.conf import settings as django_settings
+            from_email = getattr(django_settings, 'SERVER_EMAIL', None) or getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'netbox@localhost')
+            send_mail(
+                subject=subject,
+                message=text_body,
+                from_email=from_email,
+                recipient_list=recipients,
+                html_message=html_body,
+                fail_silently=False,
+            )
+            msg = f'Digest email sent to {len(recipients)} recipient(s) ({len(events)} events)'
+            self.logger.info(msg)
+            print(f'[Email Digest] {msg}', flush=True)
+
+            # Mark events as sent
+            if events:
+                event_ids = [e.pk for e in events]
+                ScanEvent.objects.filter(pk__in=event_ids).update(digest_sent=True)
+
+            # Update timestamp
+            settings.email_last_digest_sent = now
+            settings.save(update_fields=['email_last_digest_sent'])
+
+            # Prune sent events older than 7 days
+            cutoff = now - timedelta(days=7)
+            pruned = ScanEvent.objects.filter(digest_sent=True, created_at__lt=cutoff).delete()[0]
+            if pruned:
+                print(f'[Email Digest] Pruned {pruned} old sent event(s)', flush=True)
+
+        except Exception as e:
+            self.logger.error(f'Failed to send digest email: {e}')
+            print(f'[Email Digest] ERROR: {e}', flush=True)

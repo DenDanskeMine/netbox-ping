@@ -81,11 +81,81 @@
     </div>
   </div>
 
+  {# ── Email Notifications ── #}
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <h5 class="card-header">
+          <span class="mdi mdi-email-outline"></span> Email Notifications
+        </h5>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              {% for field in form %}
+                {% if field.name in 'email_notifications_enabled,email_recipients,email_digest_interval' %}
+                <div class="mb-3">
+                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}
+                  <div class="form-text text-muted">{{ field.help_text }}</div>
+                  {% endif %}
+                  {% for error in field.errors %}
+                  <div class="text-danger">{{ error }}</div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              {% for field in form %}
+                {% if field.name in 'email_include_details,email_utilization_threshold,email_on_change_only' %}
+                <div class="mb-3">
+                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}
+                  <div class="form-text text-muted">{{ field.help_text }}</div>
+                  {% endif %}
+                  {% for error in field.errors %}
+                  <div class="text-danger">{{ error }}</div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              {% endfor %}
+              {% if settings.email_last_digest_sent %}
+              <div class="mb-3">
+                <span class="text-muted">
+                  <span class="mdi mdi-clock-outline"></span>
+                  Last digest sent: {{ settings.email_last_digest_sent|timesince }} ago
+                </span>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="card-footer text-end">
+          <button type="button" class="btn btn-sm btn-outline-info" onclick="document.getElementById('test-email-form').submit();">
+            <span class="mdi mdi-email-fast-outline"></span> Send Test Email
+          </button>
+          <button type="button" class="btn btn-sm btn-primary ms-2" onclick="document.getElementById('send-digest-form').submit();">
+            <span class="mdi mdi-email-arrow-right-outline"></span> Send Digest Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="text-end mb-4">
     <button type="submit" class="btn btn-primary">
       <span class="mdi mdi-content-save"></span> Save Settings
     </button>
   </div>
+</form>
+
+<form id="test-email-form" method="post" action="{% url 'plugins:netbox_ping:test_email' %}" style="display:none;">
+  {% csrf_token %}
+</form>
+<form id="send-digest-form" method="post" action="{% url 'plugins:netbox_ping:send_digest' %}" style="display:none;">
+  {% csrf_token %}
 </form>
 
 {# ── Per-Prefix Schedules ── #}

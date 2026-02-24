@@ -19,6 +19,9 @@ A NetBox plugin for pinging, discovering, and monitoring IP addresses directly f
 - **Auto-scan scheduling** — configure recurring scans and discovery globally or per-prefix
 - **Per-prefix schedule overrides** — three modes: Follow Global, Custom On, or Custom Off
 - **DNS resolution** — automatic reverse DNS lookups with configurable DNS servers
+- **DNS sync to NetBox** — write resolved DNS names back to IPAddress records with change history
+- **Skip reserved IPs** — optionally skip pinging IPs with "reserved" status during scans
+- **Email digest notifications** — periodic summary emails with IP state changes, new discoveries, DNS changes, and high-utilization alerts
 - **Ping Status columns** — sortable status columns injected into the core IP Address and Prefix tables
 - **Status panels** — ping results shown on IP Address and Prefix detail pages
 - **Background jobs** — all scan/discover operations run as NetBox background jobs
@@ -141,6 +144,39 @@ From a prefix's **Ping Status** tab, you can override the global schedule:
 ### DNS settings
 
 Configure up to three DNS servers for reverse lookups in **Plugins > Ping > Settings**. DNS lookups are performed on reachable IPs to resolve their hostname.
+
+### DNS sync to NetBox
+
+Writes resolved DNS names back to the built-in `IPAddress.dns_name` field. Enable in **Plugins > Ping > Settings** under the DNS Configuration card.
+
+| Setting | Description |
+|---------|-------------|
+| **Sync DNS to NetBox** | Master toggle — write resolved names back to IPAddress records |
+| **Clear DNS on Missing** | Clear the DNS name field when reverse lookup returns empty |
+| **Preserve DNS if Alive** | Keep existing DNS name if the host is alive but lookup fails (overrides clear) |
+
+All changes are tracked in a DNS History log visible on each IP's Ping Status tab.
+
+### Skip reserved IPs
+
+Enable **Skip Reserved IPs** in settings to exclude IPs with a "reserved" status from being pinged during scans. Skipped IPs are shown with a yellow "Skipped" badge instead of Up/Down.
+
+### Email digest notifications
+
+Sends periodic summary emails with IP state changes, new discoveries, DNS changes, and high-utilization prefix alerts. Uses NetBox's existing `EMAIL` settings from `configuration.py` — no separate SMTP config needed.
+
+1. Go to **Plugins > Ping > Settings**
+2. Enable **Email Notifications** and add recipient addresses (comma-separated)
+3. Choose a **Digest Interval** (hourly, every 6/12 hours, daily, or weekly)
+4. Configure optional settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Include Details** | On | Show per-IP change tables grouped by prefix |
+| **Utilization Threshold** | 90% | Alert on prefixes at or above this utilization (0 = disabled) |
+| **Send on Change Only** | On | Skip sending if there are no events or high-utilization alerts |
+
+Use the **Send Test Email** button to verify SMTP delivery, or **Send Digest Now** to send a real digest with current data without waiting for the next scheduled run.
 
 ### Auto-scan intervals
 

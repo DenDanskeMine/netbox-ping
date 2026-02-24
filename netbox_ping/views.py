@@ -371,3 +371,116 @@ class PrefixScheduleEditView(LoginRequiredMixin, PermissionRequiredMixin, View):
         else:
             messages.error(request, 'Invalid schedule data.')
         return redirect(prefix.get_absolute_url() + 'ping/')
+
+
+class SendTestEmailView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Send a test digest email to verify SMTP configuration."""
+    permission_required = 'netbox_ping.view_pingresult'
+
+    def post(self, request):
+        from django.conf import settings as django_settings
+        from django.core.mail import send_mail
+        from .email import build_test_email
+
+        plugin_settings = PluginSettings.load()
+        raw = plugin_settings.email_recipients.strip()
+        recipients = [r.strip() for r in raw.split(',') if r.strip()] if raw else []
+
+        if not recipients:
+            messages.error(request, 'No email recipients configured.')
+            return redirect('plugins:netbox_ping:settings')
+
+        subject, html_body, text_body = build_test_email()
+
+        try:
+            from_email = getattr(django_settings, 'SERVER_EMAIL', None) or getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'netbox@localhost')
+            send_mail(
+                subject=subject,
+                message=text_body,
+                from_email=from_email,
+                recipient_list=recipients,
+                html_message=html_body,
+                fail_silently=False,
+            )
+            messages.success(request, f'Test email sent to {", ".join(recipients)}.')
+        except Exception as e:
+            messages.error(request, f'Failed to send test email: {e}')
+
+        return redirect('plugins:netbox_ping:settings')
+
+
+class SendDigestNowView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Send a real digest email immediately using current unsent events."""
+    permission_required = 'netbox_ping.view_pingresult'
+
+    def post(self, request):
+        from datetime import timedelta
+        from django.conf import settings as django_settings
+        from django.core.mail import send_mail
+        from django.utils import timezone
+        from .models import ScanEvent, SubnetScanResult
+        from .email import build_digest_email
+
+        plugin_settings = PluginSettings.load()
+        raw = plugin_settings.email_recipients.strip()
+        recipients = [r.strip() for r in raw.split(',') if r.strip()] if raw else []
+
+        if not recipients:
+            messages.error(request, 'No email recipients configured.')
+            return redirect('plugins:netbox_ping:settings')
+
+        now = timezone.now()
+        interval = plugin_settings.email_digest_interval or 1440
+        period_start = plugin_settings.email_last_digest_sent or (now - timedelta(minutes=interval))
+        period_end = now
+
+        # Collect unsent events
+        events = list(
+            ScanEvent.objects.filter(digest_sent=False)
+            .select_related('ip_address', 'prefix')
+            .order_by('created_at')
+        )
+
+        # Collect high-utilization prefixes
+        high_util = []
+        threshold = plugin_settings.email_utilization_threshold
+        if threshold > 0:
+            for ssr in SubnetScanResult.objects.select_related('prefix').all():
+                if ssr.total_hosts > 0 and ssr.utilization >= threshold:
+                    high_util.append(ssr)
+
+        if not events and not high_util:
+            messages.warning(request, 'No unsent events or high-utilization prefixes to report.')
+            return redirect('plugins:netbox_ping:settings')
+
+        subject, html_body, text_body = build_digest_email(
+            events, high_util, plugin_settings.email_include_details,
+            period_start, period_end, threshold,
+        )
+
+        try:
+            from_email = getattr(django_settings, 'SERVER_EMAIL', None) or getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'netbox@localhost')
+            send_mail(
+                subject=subject,
+                message=text_body,
+                from_email=from_email,
+                recipient_list=recipients,
+                html_message=html_body,
+                fail_silently=False,
+            )
+
+            # Mark events as sent and update timestamp
+            if events:
+                event_ids = [e.pk for e in events]
+                ScanEvent.objects.filter(pk__in=event_ids).update(digest_sent=True)
+            plugin_settings.email_last_digest_sent = now
+            plugin_settings.save(update_fields=['email_last_digest_sent'])
+
+            messages.success(
+                request,
+                f'Digest sent to {", ".join(recipients)} — {len(events)} event(s), {len(high_util)} high-util prefix(es).'
+            )
+        except Exception as e:
+            messages.error(request, f'Failed to send digest: {e}')
+
+        return redirect('plugins:netbox_ping:settings')

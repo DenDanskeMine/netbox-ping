@@ -35,4 +35,6 @@ urlpatterns = [
 
     # Settings
     path('settings/', views.PluginSettingsEditView.as_view(), name='settings'),
+    path('settings/test-email/', views.SendTestEmailView.as_view(), name='test_email'),
+    path('settings/send-digest/', views.SendDigestNowView.as_view(), name='send_digest'),
 ]

@@ -92,7 +92,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
 
     Returns dict: {'total': int, 'up': int, 'down': int, 'skipped': int}
     """
-    from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
+    from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory, ScanEvent
 
     log = job_logger or logger
     ip_addresses = list(prefix_obj.get_child_ips().select_related())
@@ -155,11 +155,37 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     history_records = []
     ips_to_dns_update = []
     dns_history_records = []
+    scan_events = []
 
     for ip_obj, ping_data, dns_name, dns_attempted in ping_results:
         existing = existing_results.get(ip_obj.pk)
 
         if existing:
+            # Capture state change before overwriting
+            was_reachable = existing.is_reachable
+            is_now_reachable = ping_data['is_reachable']
+            if not existing.is_skipped:
+                if was_reachable and not is_now_reachable:
+                    scan_events.append(ScanEvent(
+                        event_type='ip_went_down',
+                        prefix=prefix_obj,
+                        ip_address=ip_obj,
+                        detail={
+                            'dns_name': existing.dns_name or '',
+                            'last_response_ms': existing.response_time_ms,
+                        },
+                    ))
+                elif not was_reachable and is_now_reachable:
+                    scan_events.append(ScanEvent(
+                        event_type='ip_came_up',
+                        prefix=prefix_obj,
+                        ip_address=ip_obj,
+                        detail={
+                            'dns_name': dns_name or existing.dns_name or '',
+                            'response_time_ms': ping_data['response_time_ms'],
+                        },
+                    ))
+
             existing.is_reachable = ping_data['is_reachable']
             existing.is_skipped = False
             existing.response_time_ms = ping_data['response_time_ms']
@@ -202,6 +228,15 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
                     old_dns_name=current_netbox_dns,
                     new_dns_name=new_value,
                     changed_at=now,
+                ))
+                scan_events.append(ScanEvent(
+                    event_type='dns_changed',
+                    prefix=prefix_obj,
+                    ip_address=ip_obj,
+                    detail={
+                        'old_dns': current_netbox_dns,
+                        'new_dns': new_value,
+                    },
                 ))
 
     # Phase 2b: create/update PingResult for skipped IPs (no history)
@@ -262,6 +297,14 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         log.info(msg)
         print(f'[Scan] {msg}', flush=True)
 
+    # Phase 3: create ScanEvent records for digest notifications
+    if scan_events:
+        for i in range(0, len(scan_events), BATCH):
+            ScanEvent.objects.bulk_create(scan_events[i:i + BATCH])
+        msg = f'Created {len(scan_events)} scan event(s) for digest'
+        log.info(msg)
+        print(f'[Scan] {msg}', flush=True)
+
     total = len(ip_addresses)
     up = sum(1 for _, r, _, _ in ping_results if r['is_reachable'])
     skipped = len(skipped_ips)
@@ -278,7 +321,11 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         },
     )
 
-    return {'total': total, 'up': up, 'down': down, 'skipped': skipped}
+    state_changes = {}
+    for event in scan_events:
+        state_changes[event.event_type] = state_changes.get(event.event_type, 0) + 1
+
+    return {'total': total, 'up': up, 'down': down, 'skipped': skipped, 'state_changes': state_changes}
 
 
 def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None):
@@ -294,7 +341,7 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
     Returns dict: {'discovered': list[str], 'total_scanned': int, 'total_up': int}
     """
     from ipam.models import IPAddress
-    from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
+    from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory, ScanEvent
 
     log = job_logger or logger
     network = ip_network(prefix_obj.prefix)
@@ -374,6 +421,15 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
                             new_dns_name=dns_name,
                             changed_at=now,
                         )
+                    ScanEvent.objects.create(
+                        event_type='ip_discovered',
+                        prefix=prefix_obj,
+                        ip_address=ip_obj,
+                        detail={
+                            'dns_name': dns_name,
+                            'response_time_ms': ping_data['response_time_ms'],
+                        },
+                    )
                     discovered.append(ip_str)
                 except Exception as e:
                     logger.error(f'Failed to create IP {ip_str}: {e}')
