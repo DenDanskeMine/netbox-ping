@@ -142,6 +142,30 @@ class PingHistory(NetBoxModel):
         return 'success' if self.is_reachable else 'danger'
 
 
+class DnsHistory(models.Model):
+    """Audit log for DNS name changes synced to IPAddress."""
+
+    ip_address = models.ForeignKey(
+        to='ipam.IPAddress',
+        on_delete=models.CASCADE,
+        related_name='dns_history',
+    )
+    old_dns_name = models.CharField(max_length=255, blank=True, default='')
+    new_dns_name = models.CharField(max_length=255, blank=True, default='')
+    changed_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ['-changed_at']
+        verbose_name = 'DNS History'
+        verbose_name_plural = 'DNS History'
+        indexes = [
+            models.Index(fields=['ip_address', '-changed_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.ip_address} — "{self.old_dns_name}" → "{self.new_dns_name}"'
+
+
 class PluginSettings(models.Model):
     """Singleton model for plugin DNS configuration."""
 
@@ -202,6 +226,23 @@ class PluginSettings(models.Model):
         default=1.0,
         verbose_name='Ping Timeout (seconds)',
         help_text='How long to wait for a ping response before marking as down (e.g. 0.5 for LAN, 1.0 for WAN)',
+    )
+
+    # ── DNS Sync to NetBox ──
+    dns_sync_to_netbox = models.BooleanField(
+        default=False,
+        verbose_name='Sync DNS to NetBox',
+        help_text='Write resolved DNS names back to the built-in IPAddress dns_name field',
+    )
+    dns_clear_on_missing = models.BooleanField(
+        default=False,
+        verbose_name='Clear DNS on Missing',
+        help_text='Clear IPAddress dns_name when reverse DNS returns empty',
+    )
+    dns_preserve_if_alive = models.BooleanField(
+        default=True,
+        verbose_name='Preserve DNS if Alive',
+        help_text='Keep existing DNS name if host is alive but DNS lookup fails (overrides clear)',
     )
 
     class Meta:

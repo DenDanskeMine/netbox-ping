@@ -54,13 +54,39 @@
 </div>
 {% endif %}
 
-{% if history_table.rows|length %}
+{% if history_table.rows|length or dns_history_table.rows|length %}
 <div class="row mt-3">
   <div class="col">
     <div class="card">
-      <h5 class="card-header">Ping History</h5>
-      <div class="card-body table-responsive">
-        {% render_table history_table %}
+      <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+          {% if history_table.rows|length %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="ping-history-tab" data-bs-toggle="tab" data-bs-target="#ping-history" type="button" role="tab">
+              <span class="mdi mdi-history"></span> Ping History
+            </button>
+          </li>
+          {% endif %}
+          {% if dns_history_table.rows|length %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link{% if not history_table.rows|length %} active{% endif %}" id="dns-history-tab" data-bs-toggle="tab" data-bs-target="#dns-history" type="button" role="tab">
+              <span class="mdi mdi-dns"></span> DNS History
+            </button>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+      <div class="card-body tab-content">
+        {% if history_table.rows|length %}
+        <div class="tab-pane fade show active table-responsive" id="ping-history" role="tabpanel">
+          {% render_table history_table %}
+        </div>
+        {% endif %}
+        {% if dns_history_table.rows|length %}
+        <div class="tab-pane fade{% if not history_table.rows|length %} show active{% endif %} table-responsive" id="dns-history" role="tabpanel">
+          {% render_table dns_history_table %}
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>

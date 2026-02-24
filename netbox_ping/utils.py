@@ -52,7 +52,38 @@ def resolve_dns(ip, servers=None):
         return ''
 
 
-def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, job_logger=None):
+def _compute_dns_sync(dns_name, is_reachable, dns_attempted, current_netbox_dns, settings):
+    """
+    Decide whether to update IPAddress.dns_name and what the new value should be.
+
+    Returns (should_update, new_value).
+    """
+    if not settings or not settings.dns_sync_to_netbox:
+        return False, ''
+
+    if not dns_attempted:
+        # DNS not attempted (e.g. host down and lookup skipped) → don't touch
+        return False, ''
+
+    if dns_name:
+        # DNS found → write it
+        if dns_name != current_netbox_dns:
+            return True, dns_name
+        return False, ''
+
+    # DNS empty
+    if is_reachable and settings.dns_preserve_if_alive:
+        # Host alive + preserve enabled → don't touch
+        return False, ''
+
+    if settings.dns_clear_on_missing and current_netbox_dns:
+        # Clear enabled and there's something to clear
+        return True, ''
+
+    return False, ''
+
+
+def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None):
     """
     Ping all existing IPs in a prefix. Creates/updates PingResult and SubnetScanResult.
 
@@ -61,7 +92,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
 
     Returns dict: {'total': int, 'up': int, 'down': int}
     """
-    from .models import PingResult, PingHistory, SubnetScanResult
+    from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
 
     log = job_logger or logger
     ip_addresses = list(prefix_obj.get_child_ips().select_related())
@@ -71,9 +102,11 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         ip_str = str(ip_obj.address.ip)
         ping_data = ping_host(ip_str, timeout=ping_timeout)
         dns_name = ''
+        dns_attempted = False
         if perform_dns and ping_data['is_reachable']:
+            dns_attempted = True
             dns_name = resolve_dns(ip_str, dns_servers)
-        return ip_obj, ping_data, dns_name
+        return ip_obj, ping_data, dns_name, dns_attempted
 
     ping_results = []
     total_ips = len(ip_addresses)
@@ -87,7 +120,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
                 log.error(f'Error pinging IP: {e}')
             now_mono = time.monotonic()
             if now_mono - last_log_time >= 60 or len(ping_results) == total_ips:
-                up_so_far = sum(1 for _, r, _ in ping_results if r['is_reachable'])
+                up_so_far = sum(1 for _, r, _, _ in ping_results if r['is_reachable'])
                 msg = f'Ping progress: {len(ping_results)}/{total_ips} ({up_so_far} up)'
                 log.info(msg)
                 print(f'[Scan] {msg}', flush=True)
@@ -97,7 +130,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     now = timezone.now()
 
     # Pre-fetch all existing PingResults for these IPs
-    ip_ids = [ip_obj.pk for ip_obj, _, _ in ping_results]
+    ip_ids = [ip_obj.pk for ip_obj, _, _, _ in ping_results]
     existing_results = {}
     for i in range(0, len(ip_ids), 5000):
         batch = ip_ids[i:i + 5000]
@@ -107,8 +140,10 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     to_update = []
     to_create = []
     history_records = []
+    ips_to_dns_update = []
+    dns_history_records = []
 
-    for ip_obj, ping_data, dns_name in ping_results:
+    for ip_obj, ping_data, dns_name, dns_attempted in ping_results:
         existing = existing_results.get(ip_obj.pk)
 
         if existing:
@@ -137,6 +172,23 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
             checked_at=now,
         ))
 
+        # DNS sync logic
+        if dns_settings and dns_settings.dns_sync_to_netbox:
+            current_netbox_dns = ip_obj.dns_name or ''
+            should_update, new_value = _compute_dns_sync(
+                dns_name, ping_data['is_reachable'], dns_attempted,
+                current_netbox_dns, dns_settings,
+            )
+            if should_update:
+                ip_obj.dns_name = new_value
+                ips_to_dns_update.append(ip_obj)
+                dns_history_records.append(DnsHistory(
+                    ip_address=ip_obj,
+                    old_dns_name=current_netbox_dns,
+                    new_dns_name=new_value,
+                    changed_at=now,
+                ))
+
     BATCH = 1000
     if to_update:
         update_fields = ['is_reachable', 'response_time_ms', 'dns_name', 'last_checked', 'last_seen']
@@ -159,8 +211,24 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     log.info(msg)
     print(f'[Scan] {msg}', flush=True)
 
+    # DNS sync: bulk update IPAddress.dns_name and create DnsHistory
+    if ips_to_dns_update:
+        from ipam.models import IPAddress as IPAddressModel
+        for i in range(0, len(ips_to_dns_update), BATCH):
+            IPAddressModel.objects.bulk_update(ips_to_dns_update[i:i + BATCH], ['dns_name'])
+        msg = f'DNS sync: updated {len(ips_to_dns_update)} IPAddress dns_name fields'
+        log.info(msg)
+        print(f'[Scan] {msg}', flush=True)
+
+    if dns_history_records:
+        for i in range(0, len(dns_history_records), BATCH):
+            DnsHistory.objects.bulk_create(dns_history_records[i:i + BATCH])
+        msg = f'DNS sync: created {len(dns_history_records)} DNS history records'
+        log.info(msg)
+        print(f'[Scan] {msg}', flush=True)
+
     total = len(ping_results)
-    up = sum(1 for _, r, _ in ping_results if r['is_reachable'])
+    up = sum(1 for _, r, _, _ in ping_results if r['is_reachable'])
     down = total - up
 
     SubnetScanResult.objects.update_or_create(
@@ -176,7 +244,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     return {'total': total, 'up': up, 'down': down}
 
 
-def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, job_logger=None):
+def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None):
     """
     Ping entire network range to discover new hosts not yet in NetBox.
     Creates new IPAddress + PingResult for any discovered hosts.
@@ -189,7 +257,7 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
     Returns dict: {'discovered': list[str], 'total_scanned': int, 'total_up': int}
     """
     from ipam.models import IPAddress
-    from .models import PingResult, PingHistory, SubnetScanResult
+    from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
 
     log = job_logger or logger
     network = ip_network(prefix_obj.prefix)
@@ -261,6 +329,14 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
                         dns_name=dns_name,
                         checked_at=now,
                     )
+                    # Create DNS history if dns_name was set on a new IP
+                    if dns_name and dns_settings and dns_settings.dns_sync_to_netbox:
+                        DnsHistory.objects.create(
+                            ip_address=ip_obj,
+                            old_dns_name='',
+                            new_dns_name=dns_name,
+                            changed_at=now,
+                        )
                     discovered.append(ip_str)
                 except Exception as e:
                     logger.error(f'Failed to create IP {ip_str}: {e}')

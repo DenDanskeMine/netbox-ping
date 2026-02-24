@@ -9,8 +9,8 @@ from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
 from ipam.models import Prefix, IPAddress
 
-from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule
-from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable
+from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, DnsHistory
+from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable, DnsHistoryTable
 from .filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet
 from .forms import PingResultFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm
 
@@ -141,9 +141,12 @@ class IPAddressPingTab(generic.ObjectView):
             ping_result = None
         history = PingHistory.objects.filter(ip_address=instance).select_related('ip_address')[:50]
         history_table = PingHistoryTable(history, orderable=False)
+        dns_history = DnsHistory.objects.filter(ip_address=instance)[:50]
+        dns_history_table = DnsHistoryTable(dns_history, orderable=False)
         return {
             'ping_result': ping_result,
             'history_table': history_table,
+            'dns_history_table': dns_history_table,
         }
 
 
@@ -231,7 +234,7 @@ class IPPingSingleActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         from django.utils import timezone
-        from .utils import ping_host, resolve_dns
+        from .utils import ping_host, resolve_dns, _compute_dns_sync
 
         ip_obj = get_object_or_404(IPAddress, pk=pk)
         ip_str = str(ip_obj.address.ip)
@@ -239,7 +242,9 @@ class IPPingSingleActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         ping_data = ping_host(ip_str)
         dns_name = ''
+        dns_attempted = False
         if settings.perform_dns_lookup and ping_data['is_reachable']:
+            dns_attempted = True
             dns_name = resolve_dns(ip_str, settings.get_dns_servers())
 
         now = timezone.now()
@@ -270,6 +275,23 @@ class IPPingSingleActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
             dns_name=dns_name,
             checked_at=now,
         )
+
+        # DNS sync
+        if settings.dns_sync_to_netbox:
+            current_netbox_dns = ip_obj.dns_name or ''
+            should_update, new_value = _compute_dns_sync(
+                dns_name, ping_data['is_reachable'], dns_attempted,
+                current_netbox_dns, settings,
+            )
+            if should_update:
+                ip_obj.dns_name = new_value
+                ip_obj.save(update_fields=['dns_name'])
+                DnsHistory.objects.create(
+                    ip_address=ip_obj,
+                    old_dns_name=current_netbox_dns,
+                    new_dns_name=new_value,
+                    changed_at=now,
+                )
 
         if ping_data['is_reachable']:
             rtt = ping_data['response_time_ms']

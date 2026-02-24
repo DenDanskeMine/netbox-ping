@@ -2,7 +2,7 @@ import django_tables2 as tables
 from netbox.tables import NetBoxTable, columns
 from utilities.tables import register_table_column
 from ipam.tables import IPAddressTable, AnnotatedIPAddressTable, PrefixTable
-from .models import PingResult, PingHistory, SubnetScanResult
+from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
 
 
 class PingResultTable(NetBoxTable):
@@ -103,6 +103,19 @@ class SubnetScanResultTable(NetBoxTable):
         default_columns = (
             'prefix', 'total_hosts', 'hosts_up', 'hosts_down', 'last_scanned',
         )
+
+
+class DnsHistoryTable(tables.Table):
+    """Table for DNS change history on the IP address ping tab."""
+
+    changed_at = tables.DateTimeColumn(verbose_name='Changed At')
+    old_dns_name = tables.Column(verbose_name='Old DNS Name')
+    new_dns_name = tables.Column(verbose_name='New DNS Name')
+
+    class Meta:
+        model = DnsHistory
+        fields = ('changed_at', 'old_dns_name', 'new_dns_name')
+        attrs = {'class': 'table table-hover'}
 
 
 # ─── Register extra columns on core NetBox tables ────────────

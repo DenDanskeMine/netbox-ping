@@ -30,6 +30,7 @@ class PrefixScanJob(JobRunner):
             perform_dns=settings.perform_dns_lookup,
             max_workers=settings.ping_concurrency,
             ping_timeout=settings.ping_timeout,
+            dns_settings=settings,
             job_logger=self.logger,
         )
         self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up')
@@ -57,6 +58,7 @@ class PrefixDiscoverJob(JobRunner):
             perform_dns=settings.perform_dns_lookup,
             max_workers=settings.ping_concurrency,
             ping_timeout=settings.ping_timeout,
+            dns_settings=settings,
             job_logger=self.logger,
         )
         self.logger.info(
@@ -77,8 +79,8 @@ class SingleIPPingJob(JobRunner):
 
     def run(self, *args, **kwargs):
         from django.utils import timezone as tz
-        from .utils import ping_host, resolve_dns
-        from .models import PingResult, PingHistory
+        from .utils import ping_host, resolve_dns, _compute_dns_sync
+        from .models import PingResult, PingHistory, DnsHistory
 
         ip_obj = self.job.object
         ip_str = str(ip_obj.address.ip)
@@ -89,7 +91,9 @@ class SingleIPPingJob(JobRunner):
 
         ping_data = ping_host(ip_str)
         dns_name = ''
+        dns_attempted = False
         if settings.perform_dns_lookup and ping_data['is_reachable']:
+            dns_attempted = True
             dns_name = resolve_dns(ip_str, dns_servers)
 
         now = tz.now()
@@ -120,6 +124,23 @@ class SingleIPPingJob(JobRunner):
             dns_name=dns_name,
             checked_at=now,
         )
+
+        # DNS sync
+        if settings.dns_sync_to_netbox:
+            current_netbox_dns = ip_obj.dns_name or ''
+            should_update, new_value = _compute_dns_sync(
+                dns_name, ping_data['is_reachable'], dns_attempted,
+                current_netbox_dns, settings,
+            )
+            if should_update:
+                ip_obj.dns_name = new_value
+                ip_obj.save(update_fields=['dns_name'])
+                DnsHistory.objects.create(
+                    ip_address=ip_obj,
+                    old_dns_name=current_netbox_dns,
+                    new_dns_name=new_value,
+                    changed_at=now,
+                )
 
         status = 'up' if ping_data['is_reachable'] else 'down'
         self.logger.info(f'{ip_str} is {status}')

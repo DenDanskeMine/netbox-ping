@@ -33,6 +33,24 @@
             </div>
             {% endif %}
           {% endfor %}
+          <hr>
+          <h6 class="text-muted mb-3">
+            <span class="mdi mdi-sync"></span> DNS Sync to NetBox
+          </h6>
+          {% for field in form %}
+            {% if field.name in 'dns_sync_to_netbox,dns_clear_on_missing,dns_preserve_if_alive' %}
+            <div class="mb-3">
+              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}
+              <div class="form-text text-muted">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+              <div class="text-danger">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          {% endfor %}
         </div>
       </div>
     </div>
