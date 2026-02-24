@@ -20,7 +20,9 @@
           <tr>
             <th scope="row">Status</th>
             <td>
-              {% if ping_result.is_reachable %}
+              {% if ping_result.is_skipped %}
+                <span class="badge text-bg-warning">Skipped</span>
+              {% elif ping_result.is_reachable %}
                 <span class="badge text-bg-success">Up</span>
               {% else %}
                 <span class="badge text-bg-danger">Down</span>

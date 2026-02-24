@@ -88,6 +88,7 @@ class SubnetScanResultTable(NetBoxTable):
     total_hosts = tables.Column(verbose_name='Total Hosts')
     hosts_up = tables.Column(verbose_name='Hosts Up')
     hosts_down = tables.Column(verbose_name='Hosts Down')
+    hosts_skipped = tables.Column(verbose_name='Hosts Skipped')
     last_scanned = tables.DateTimeColumn(verbose_name='Last Scanned')
     last_discovered = tables.DateTimeColumn(verbose_name='Last Discovered')
     actions = columns.ActionsColumn(
@@ -98,10 +99,10 @@ class SubnetScanResultTable(NetBoxTable):
         model = SubnetScanResult
         fields = (
             'pk', 'id', 'prefix', 'total_hosts', 'hosts_up',
-            'hosts_down', 'last_scanned', 'last_discovered', 'actions',
+            'hosts_down', 'hosts_skipped', 'last_scanned', 'last_discovered', 'actions',
         )
         default_columns = (
-            'prefix', 'total_hosts', 'hosts_up', 'hosts_down', 'last_scanned',
+            'prefix', 'total_hosts', 'hosts_up', 'hosts_down', 'hosts_skipped', 'last_scanned',
         )
 
 
@@ -122,7 +123,9 @@ class DnsHistoryTable(tables.Table):
 
 PING_STATUS_TEMPLATE = '''
 {% if record.ping_result %}
-    {% if record.ping_result.is_reachable %}
+    {% if record.ping_result.is_skipped %}
+        <span class="badge text-bg-warning">Skipped</span>
+    {% elif record.ping_result.is_reachable %}
         <span class="badge text-bg-success">Up</span>
     {% else %}
         <span class="badge text-bg-danger">Down</span>
@@ -137,6 +140,9 @@ SCAN_STATUS_TEMPLATE = '''
     <span class="badge text-bg-info">
         {{ record.scan_result.hosts_up }}/{{ record.scan_result.total_hosts }} up
     </span>
+    {% if record.scan_result.hosts_skipped %}
+        <span class="badge text-bg-warning">{{ record.scan_result.hosts_skipped }} skipped</span>
+    {% endif %}
 {% else %}
     <span class="text-muted">&mdash;</span>
 {% endif %}

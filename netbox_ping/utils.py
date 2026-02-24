@@ -83,19 +83,32 @@ def _compute_dns_sync(dns_name, is_reachable, dns_attempted, current_netbox_dns,
     return False, ''
 
 
-def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None):
+def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, skip_reserved=False):
     """
     Ping all existing IPs in a prefix. Creates/updates PingResult and SubnetScanResult.
 
     Pings run in a thread pool for speed; DB writes happen on the main thread
     to avoid exhausting PostgreSQL connections.
 
-    Returns dict: {'total': int, 'up': int, 'down': int}
+    Returns dict: {'total': int, 'up': int, 'down': int, 'skipped': int}
     """
     from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
 
     log = job_logger or logger
     ip_addresses = list(prefix_obj.get_child_ips().select_related())
+
+    # Partition: skip reserved IPs if setting is enabled
+    if skip_reserved:
+        pingable_ips = [ip for ip in ip_addresses if ip.status != 'reserved']
+        skipped_ips = [ip for ip in ip_addresses if ip.status == 'reserved']
+    else:
+        pingable_ips = ip_addresses
+        skipped_ips = []
+
+    if skipped_ips:
+        msg = f'Skipping {len(skipped_ips)} reserved IPs'
+        log.info(msg)
+        print(f'[Scan] {msg}', flush=True)
 
     # Phase 1: ping + DNS in parallel (no DB access)
     def _ping_ip(ip_obj):
@@ -109,10 +122,10 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         return ip_obj, ping_data, dns_name, dns_attempted
 
     ping_results = []
-    total_ips = len(ip_addresses)
+    total_ips = len(pingable_ips)
     last_log_time = time.monotonic()
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_ping_ip, ip_obj): ip_obj for ip_obj in ip_addresses}
+        futures = {executor.submit(_ping_ip, ip_obj): ip_obj for ip_obj in pingable_ips}
         for future in concurrent.futures.as_completed(futures):
             try:
                 ping_results.append(future.result())
@@ -129,11 +142,11 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     # Phase 2: bulk DB writes on the main thread
     now = timezone.now()
 
-    # Pre-fetch all existing PingResults for these IPs
-    ip_ids = [ip_obj.pk for ip_obj, _, _, _ in ping_results]
+    # Pre-fetch all existing PingResults for all IPs (pingable + skipped)
+    all_ip_ids = [ip_obj.pk for ip_obj in ip_addresses]
     existing_results = {}
-    for i in range(0, len(ip_ids), 5000):
-        batch = ip_ids[i:i + 5000]
+    for i in range(0, len(all_ip_ids), 5000):
+        batch = all_ip_ids[i:i + 5000]
         for pr in PingResult.objects.filter(ip_address_id__in=batch):
             existing_results[pr.ip_address_id] = pr
 
@@ -148,6 +161,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
 
         if existing:
             existing.is_reachable = ping_data['is_reachable']
+            existing.is_skipped = False
             existing.response_time_ms = ping_data['response_time_ms']
             existing.dns_name = dns_name if dns_name else (existing.dns_name or '')
             existing.last_checked = now
@@ -158,6 +172,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
             to_create.append(PingResult(
                 ip_address=ip_obj,
                 is_reachable=ping_data['is_reachable'],
+                is_skipped=False,
                 response_time_ms=ping_data['response_time_ms'],
                 dns_name=dns_name,
                 last_checked=now,
@@ -189,9 +204,29 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
                     changed_at=now,
                 ))
 
+    # Phase 2b: create/update PingResult for skipped IPs (no history)
+    for ip_obj in skipped_ips:
+        existing = existing_results.get(ip_obj.pk)
+        if existing:
+            existing.is_reachable = False
+            existing.is_skipped = True
+            existing.response_time_ms = None
+            existing.last_checked = now
+            to_update.append(existing)
+        else:
+            to_create.append(PingResult(
+                ip_address=ip_obj,
+                is_reachable=False,
+                is_skipped=True,
+                response_time_ms=None,
+                dns_name='',
+                last_checked=now,
+                last_seen=None,
+            ))
+
     BATCH = 1000
     if to_update:
-        update_fields = ['is_reachable', 'response_time_ms', 'dns_name', 'last_checked', 'last_seen']
+        update_fields = ['is_reachable', 'is_skipped', 'response_time_ms', 'dns_name', 'last_checked', 'last_seen']
         for i in range(0, len(to_update), BATCH):
             PingResult.objects.bulk_update(to_update[i:i + BATCH], update_fields)
         msg = f'Bulk updated {len(to_update)} existing results'
@@ -227,9 +262,10 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         log.info(msg)
         print(f'[Scan] {msg}', flush=True)
 
-    total = len(ping_results)
+    total = len(ip_addresses)
     up = sum(1 for _, r, _, _ in ping_results if r['is_reachable'])
-    down = total - up
+    skipped = len(skipped_ips)
+    down = total - up - skipped
 
     SubnetScanResult.objects.update_or_create(
         prefix=prefix_obj,
@@ -237,11 +273,12 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
             'total_hosts': total,
             'hosts_up': up,
             'hosts_down': down,
+            'hosts_skipped': skipped,
             'last_scanned': timezone.now(),
         },
     )
 
-    return {'total': total, 'up': up, 'down': down}
+    return {'total': total, 'up': up, 'down': down, 'skipped': skipped}
 
 
 def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None):

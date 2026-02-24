@@ -25,7 +25,9 @@
           <tr>
             <th scope="row">Status</th>
             <td>
-              {% if object.is_reachable %}
+              {% if object.is_skipped %}
+                <span class="badge text-bg-warning">Skipped</span>
+              {% elif object.is_reachable %}
                 <span class="badge text-bg-success">Up</span>
               {% else %}
                 <span class="badge text-bg-danger">Down</span>

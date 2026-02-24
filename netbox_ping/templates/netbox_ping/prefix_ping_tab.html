@@ -82,6 +82,19 @@
             {% endif %}
           </td>
         </tr>
+        {% if scan_result %}
+        <tr>
+          <th scope="row">Scan Summary</th>
+          <td>
+            <span class="badge text-bg-success">{{ scan_result.hosts_up }} up</span>
+            <span class="badge text-bg-danger">{{ scan_result.hosts_down }} down</span>
+            {% if scan_result.hosts_skipped %}
+              <span class="badge text-bg-warning">{{ scan_result.hosts_skipped }} skipped</span>
+            {% endif %}
+            <span class="text-muted ms-1">/ {{ scan_result.total_hosts }} total</span>
+          </td>
+        </tr>
+        {% endif %}
       </table>
       <div class="card-footer text-end">
         <button type="submit" class="btn btn-sm btn-primary">

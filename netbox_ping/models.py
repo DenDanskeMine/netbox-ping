@@ -31,6 +31,11 @@ class PingResult(NetBoxModel):
         default=False,
         verbose_name='Reachable',
     )
+    is_skipped = models.BooleanField(
+        default=False,
+        verbose_name='Skipped',
+        help_text='IP was skipped during scan (e.g. reserved status)',
+    )
     last_seen = models.DateTimeField(
         blank=True,
         null=True,
@@ -60,13 +65,20 @@ class PingResult(NetBoxModel):
         verbose_name_plural = 'Ping Results'
 
     def __str__(self):
-        status = 'Up' if self.is_reachable else 'Down'
+        if self.is_skipped:
+            status = 'Skipped'
+        elif self.is_reachable:
+            status = 'Up'
+        else:
+            status = 'Down'
         return f'{self.ip_address} — {status}'
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_ping:pingresult', args=[self.pk])
 
     def get_status_color(self):
+        if self.is_skipped:
+            return 'warning'
         return 'success' if self.is_reachable else 'danger'
 
 
@@ -81,6 +93,7 @@ class SubnetScanResult(NetBoxModel):
     total_hosts = models.IntegerField(default=0)
     hosts_up = models.IntegerField(default=0)
     hosts_down = models.IntegerField(default=0)
+    hosts_skipped = models.IntegerField(default=0)
     last_scanned = models.DateTimeField(
         blank=True,
         null=True,
@@ -226,6 +239,11 @@ class PluginSettings(models.Model):
         default=1.0,
         verbose_name='Ping Timeout (seconds)',
         help_text='How long to wait for a ping response before marking as down (e.g. 0.5 for LAN, 1.0 for WAN)',
+    )
+    skip_reserved_ips = models.BooleanField(
+        default=False,
+        verbose_name='Skip Reserved IPs',
+        help_text='Skip pinging IPs with "reserved" status during scans (they will show as Skipped)',
     )
 
     # ── DNS Sync to NetBox ──

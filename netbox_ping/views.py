@@ -240,6 +240,12 @@ class IPPingSingleActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
         ip_str = str(ip_obj.address.ip)
         settings = PluginSettings.load()
 
+        if settings.skip_reserved_ips and ip_obj.status == 'reserved':
+            messages.warning(
+                request,
+                f'{ip_str} has "reserved" status and would be skipped during automatic scans. Pinging anyway since you requested it.',
+            )
+
         ping_data = ping_host(ip_str)
         dns_name = ''
         dns_attempted = False
@@ -259,6 +265,7 @@ class IPPingSingleActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
             ip_address=ip_obj,
             defaults={
                 'is_reachable': ping_data['is_reachable'],
+                'is_skipped': False,
                 'response_time_ms': ping_data['response_time_ms'],
                 'dns_name': dns_name or (
                     PingResult.objects.filter(ip_address=ip_obj)

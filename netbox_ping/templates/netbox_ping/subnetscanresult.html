@@ -34,6 +34,12 @@
             <th scope="row">Hosts Down</th>
             <td><span class="badge text-bg-danger">{{ object.hosts_down }}</span></td>
           </tr>
+          {% if object.hosts_skipped %}
+          <tr>
+            <th scope="row">Hosts Skipped</th>
+            <td><span class="badge text-bg-warning">{{ object.hosts_skipped }}</span></td>
+          </tr>
+          {% endif %}
           <tr>
             <th scope="row">Utilization</th>
             <td>

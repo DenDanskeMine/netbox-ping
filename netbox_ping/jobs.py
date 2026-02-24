@@ -32,9 +32,11 @@ class PrefixScanJob(JobRunner):
             ping_timeout=settings.ping_timeout,
             dns_settings=settings,
             job_logger=self.logger,
+            skip_reserved=settings.skip_reserved_ips,
         )
-        self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up')
-        print(f'[Prefix Scan] Complete: {result["up"]}/{result["total"]} hosts up', flush=True)
+        skipped_str = f', {result["skipped"]} skipped' if result.get('skipped') else ''
+        self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up{skipped_str}')
+        print(f'[Prefix Scan] Complete: {result["up"]}/{result["total"]} hosts up{skipped_str}', flush=True)
 
 
 class PrefixDiscoverJob(JobRunner):
@@ -108,6 +110,7 @@ class SingleIPPingJob(JobRunner):
             ip_address=ip_obj,
             defaults={
                 'is_reachable': ping_data['is_reachable'],
+                'is_skipped': False,
                 'response_time_ms': ping_data['response_time_ms'],
                 'dns_name': dns_name or (
                     PingResult.objects.filter(ip_address=ip_obj)
