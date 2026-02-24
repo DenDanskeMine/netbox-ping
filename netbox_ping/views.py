@@ -24,6 +24,10 @@ class PingResultListView(generic.ObjectListView):
     table = PingResultTable
     filterset = PingResultFilterSet
     filterset_form = PingResultFilterForm
+    actions = {
+        'export': set(),
+        'bulk_delete': {'delete'},
+    }
 
 
 class PingResultView(generic.ObjectView):
@@ -46,6 +50,10 @@ class PingHistoryListView(generic.ObjectListView):
     queryset = PingHistory.objects.select_related('ip_address')
     table = PingHistoryTable
     filterset = PingHistoryFilterSet
+    actions = {
+        'export': set(),
+        'bulk_delete': {'delete'},
+    }
 
 
 class PingHistoryView(generic.ObjectView):
@@ -69,6 +77,10 @@ class SubnetScanResultListView(generic.ObjectListView):
     table = SubnetScanResultTable
     filterset = SubnetScanResultFilterSet
     filterset_form = SubnetScanResultFilterForm
+    actions = {
+        'export': set(),
+        'bulk_delete': {'delete'},
+    }
 
 
 class SubnetScanResultView(generic.ObjectView):
