@@ -4,6 +4,7 @@
 ![NetBox](https://img.shields.io/badge/netbox-4.5%2B-blue.svg)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/netbox-ping.svg)](https://pypi.org/project/netbox-ping/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/netbox-ping?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/netbox-ping)
 
 A NetBox plugin for pinging, discovering, and monitoring IP addresses directly from your NetBox instance.
 
