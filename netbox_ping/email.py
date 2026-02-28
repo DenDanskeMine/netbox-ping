@@ -44,7 +44,11 @@ def _build_ip_transitions(events):
     """
     Build per-IP state transition chains from events.
 
-    Returns dict of {prefix_str: {ip_str: {'display': str, 'chain': [states], 'current': str}}}
+    Returns dict of:
+        {prefix_str: {ip_str: {'display': str, 'chain': [(state, timestamp|None), ...], 'current': str}}}
+
+    The first entry in the chain is the "from" state (no timestamp).
+    Each subsequent entry is the "to" state with the event's created_at timestamp.
     Events must be ordered by created_at.
     """
     # Group by prefix, then by IP
@@ -60,7 +64,7 @@ def _build_ip_transitions(events):
     for prefix_str in sorted(prefix_ip_events):
         result[prefix_str] = {}
         for ip_str, ip_events in sorted(prefix_ip_events[prefix_str].items()):
-            # Build chain: take the "from" of the first event, then all "to" states
+            # Build chain: (state, timestamp) tuples
             chain = []
             display = _ip_display(ip_events[0])
             for event in ip_events:
@@ -68,39 +72,65 @@ def _build_ip_transitions(events):
                 if not transition:
                     continue
                 from_state, to_state = transition
+                ts = getattr(event, 'created_at', None)
                 if not chain:
-                    chain.append(from_state)
-                chain.append(to_state)
+                    chain.append((from_state, None))
+                chain.append((to_state, ts))
 
             if chain:
                 result[prefix_str][ip_str] = {
                     'display': display,
                     'chain': chain,
-                    'current': chain[-1],
+                    'current': chain[-1][0],
                 }
 
     return result
 
 
-def _state_badge_html(state):
-    """Render an inline HTML badge for a state."""
+def _state_badge_html(state, ts=None):
+    """Render an inline HTML badge for a state, with optional timestamp inside."""
     color = STATE_COLORS.get(state, '#6c757d')
+    ts_html = ''
+    if ts:
+        ts_str = _fmt_ts(ts)
+        ts_html = (
+            f'<br><span style="font-size:9px;font-weight:normal;'
+            f'opacity:0.85;">{escape(ts_str)}</span>'
+        )
     return (
-        f'<span style="display:inline-block;padding:2px 8px;border-radius:4px;'
-        f'font-size:12px;font-weight:bold;color:white;background:{color};">'
-        f'{escape(state)}</span>'
+        f'<span style="display:inline-block;padding:3px 8px;border-radius:4px;'
+        f'font-size:12px;font-weight:bold;color:white;background:{color};'
+        f'text-align:center;vertical-align:top;">'
+        f'{escape(state)}{ts_html}</span>'
     )
 
 
+def _fmt_ts(ts):
+    """Format a timestamp for display (short datetime)."""
+    if ts is None:
+        return ''
+    return ts.strftime('%b %d %H:%M')
+
+
+
 def _chain_html(chain):
-    """Render a state transition chain as HTML badges with arrows."""
-    arrow = ' <span style="color:#999;font-size:14px;">&rarr;</span> '
-    return arrow.join(_state_badge_html(s) for s in chain)
+    """Render a state transition chain as HTML badges with arrows and timestamps."""
+    arrow = ' <span style="color:#999;font-size:14px;vertical-align:top;">&rarr;</span> '
+    parts = []
+    for state, ts in chain:
+        parts.append(_state_badge_html(state, ts))
+    return arrow.join(parts)
 
 
 def _chain_text(chain):
-    """Render a state transition chain as plain text."""
-    return ' -> '.join(chain)
+    """Render a state transition chain as plain text with timestamps."""
+    parts = []
+    for state, ts in chain:
+        if ts:
+            parts.append(f'{state} ({_fmt_ts(ts)})')
+        else:
+            parts.append(state)
+    return ' -> '.join(parts)
 
 
 def build_digest_email(events, high_util_prefixes, include_details, period_start, period_end, utilization_threshold):
@@ -344,24 +374,36 @@ def build_test_email():
         prefix = '10.0.1.0/24'
 
     class _MockEvent:
-        def __init__(self, event_type, detail, ip='10.0.1.5'):
+        def __init__(self, event_type, detail, ip='10.0.1.5', minutes_ago=0):
             self.event_type = event_type
             self.ip_address = _MockIP(ip)
             self.prefix = _MockPrefix()
             self.detail = detail
+            self.created_at = now - timedelta(minutes=minutes_ago)
 
     # Sample events showing various transitions — each IP has a unique address
     sample_events = [
-        _MockEvent('ip_went_down', {'dns_name': 'switch-core.example.com', 'last_response_ms': 1.2}, ip='10.0.1.1'),
-        _MockEvent('ip_came_up', {'dns_name': 'server01.example.com', 'response_time_ms': 0.8}, ip='10.0.1.2'),
-        _MockEvent('ip_discovered', {'dns_name': 'printer.example.com', 'response_time_ms': 3.1}, ip='10.0.1.3'),
-        _MockEvent('ip_went_stale', {'dns_name': 'old-server.example.com', 'consecutive_down_count': 10, 'last_seen': '2025-01-15 12:00:00'}, ip='10.0.1.4'),
-        _MockEvent('ip_removed_stale', {'dns_name': 'decomm.example.com', 'ip_address': '10.0.1.99/24', 'last_seen': None}, ip='10.0.1.5'),
-        # Multi-transition: went down then came back up
-        _MockEvent('ip_went_down', {'dns_name': 'flaky-host.example.com', 'last_response_ms': 2.5}, ip='10.0.1.6'),
-        _MockEvent('ip_came_up', {'dns_name': 'flaky-host.example.com', 'response_time_ms': 1.1}, ip='10.0.1.6'),
+        _MockEvent('ip_went_down', {'dns_name': 'switch-core.example.com', 'last_response_ms': 1.2}, ip='10.0.1.1', minutes_ago=45),
+        _MockEvent('ip_came_up', {'dns_name': 'server01.example.com', 'response_time_ms': 0.8}, ip='10.0.1.2', minutes_ago=30),
+        _MockEvent('ip_discovered', {'dns_name': 'printer.example.com', 'response_time_ms': 3.1}, ip='10.0.1.3', minutes_ago=50),
+        _MockEvent('ip_went_stale', {'dns_name': 'old-server.example.com', 'consecutive_down_count': 10, 'last_seen': '2025-01-15 12:00:00'}, ip='10.0.1.4', minutes_ago=20),
+        _MockEvent('ip_removed_stale', {'dns_name': 'decomm.example.com', 'ip_address': '10.0.1.99/24', 'last_seen': None}, ip='10.0.1.5', minutes_ago=15),
+        # Multi-transition: went down then came back up (with timestamps)
+        _MockEvent('ip_went_down', {'dns_name': 'flaky-host.example.com', 'last_response_ms': 2.5}, ip='10.0.1.6', minutes_ago=40),
+        _MockEvent('ip_came_up', {'dns_name': 'flaky-host.example.com', 'response_time_ms': 1.1}, ip='10.0.1.6', minutes_ago=25),
+        # Long flapping chain (tests collapse logic)
+        _MockEvent('ip_went_down', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=55),
+        _MockEvent('ip_came_up', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=50),
+        _MockEvent('ip_went_down', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=45),
+        _MockEvent('ip_came_up', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=40),
+        _MockEvent('ip_went_down', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=35),
+        _MockEvent('ip_came_up', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=30),
+        _MockEvent('ip_went_down', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=25),
+        _MockEvent('ip_came_up', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=20),
+        _MockEvent('ip_went_down', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=15),
+        _MockEvent('ip_went_stale', {'dns_name': 'phone.example.com'}, ip='10.0.1.7', minutes_ago=5),
         # DNS change (separate section)
-        _MockEvent('dns_changed', {'old_dns': 'old-host.example.com', 'new_dns': 'new-host.example.com'}, ip='10.0.1.7'),
+        _MockEvent('dns_changed', {'old_dns': 'old-host.example.com', 'new_dns': 'new-host.example.com'}, ip='10.0.1.8', minutes_ago=10),
     ]
 
     class _MockSSR:
