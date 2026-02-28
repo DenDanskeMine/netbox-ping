@@ -27,6 +27,8 @@
             <td>
               {% if object.is_skipped %}
                 <span class="badge text-bg-warning">Skipped</span>
+              {% elif object.is_stale %}
+                <span class="badge text-bg-warning">Stale</span>
               {% elif object.is_reachable %}
                 <span class="badge text-bg-success">Up</span>
               {% else %}
@@ -34,6 +36,12 @@
               {% endif %}
             </td>
           </tr>
+          {% if object.consecutive_down_count > 0 %}
+          <tr>
+            <th scope="row">Consecutive Down</th>
+            <td>{{ object.consecutive_down_count }} scan{{ object.consecutive_down_count|pluralize }}</td>
+          </tr>
+          {% endif %}
           <tr>
             <th scope="row">RTT</th>
             <td>{{ object.response_time_ms|default:"N/A" }}{% if object.response_time_ms %} ms{% endif %}</td>

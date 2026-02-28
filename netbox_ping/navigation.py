@@ -10,6 +10,11 @@ menu = PluginMenu(
                 permissions=('netbox_ping.view_pingresult',),
             ),
             PluginMenuItem(
+                link='plugins:netbox_ping:pinghistory_list',
+                link_text='Ping History',
+                permissions=('netbox_ping.view_pinghistory',),
+            ),
+            PluginMenuItem(
                 link='plugins:netbox_ping:subnetscanresult_list',
                 link_text='Scan Results',
                 permissions=('netbox_ping.view_subnetscanresult',),

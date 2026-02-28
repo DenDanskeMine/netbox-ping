@@ -12,7 +12,7 @@ from ipam.models import Prefix, IPAddress
 from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, DnsHistory
 from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable, DnsHistoryTable
 from .filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet
-from .forms import PingResultFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm
+from .forms import PingResultFilterForm, PingHistoryFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm
 
 logger = logging.getLogger('netbox.netbox_ping')
 
@@ -24,6 +24,7 @@ class PingResultListView(generic.ObjectListView):
     table = PingResultTable
     filterset = PingResultFilterSet
     filterset_form = PingResultFilterForm
+    template_name = 'netbox_ping/pingresult_list.html'
     actions = {
         'export': set(),
         'bulk_delete': {'delete'},
@@ -50,6 +51,7 @@ class PingHistoryListView(generic.ObjectListView):
     queryset = PingHistory.objects.select_related('ip_address')
     table = PingHistoryTable
     filterset = PingHistoryFilterSet
+    filterset_form = PingHistoryFilterForm
     actions = {
         'export': set(),
         'bulk_delete': {'delete'},

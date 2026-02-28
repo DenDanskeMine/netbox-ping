@@ -81,6 +81,64 @@
     </div>
   </div>
 
+  {# ── Stale IP Detection ── #}
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <h5 class="card-header">
+          <span class="mdi mdi-timer-sand"></span> Stale IP Detection
+        </h5>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              <h6 class="text-muted mb-3">
+                <span class="mdi mdi-tag-outline"></span> Stale Tagging
+              </h6>
+              {% for field in form %}
+                {% if field.name in 'stale_enabled,stale_scans_threshold,stale_days_threshold' %}
+                <div class="mb-3">
+                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}
+                  <div class="form-text text-muted">{{ field.help_text }}</div>
+                  {% endif %}
+                  {% for error in field.errors %}
+                  <div class="text-danger">{{ error }}</div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              <h6 class="text-muted mb-3">
+                <span class="mdi mdi-delete-outline"></span> Auto-Remove
+              </h6>
+              {% for field in form %}
+                {% if field.name in 'stale_remove_enabled,stale_remove_days' %}
+                <div class="mb-3">
+                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}
+                  <div class="form-text text-muted">{{ field.help_text }}</div>
+                  {% endif %}
+                  {% for error in field.errors %}
+                  <div class="text-danger">{{ error }}</div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              {% endfor %}
+              <div class="alert alert-warning mt-3 mb-0">
+                <span class="mdi mdi-alert-outline"></span>
+                <strong>Warning:</strong> Auto-remove permanently deletes IP addresses from NetBox.
+                Use per-prefix exclusions to protect critical prefixes.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {# ── Email Notifications ── #}
   <div class="row mb-4">
     <div class="col-12">
@@ -174,6 +232,7 @@
             <th>Scan Interval</th>
             <th>Discover Mode</th>
             <th>Discover Interval</th>
+            <th>Stale Detection</th>
             <th>Last Scanned</th>
             <th>Last Discovered</th>
             <th>Actions</th>
@@ -217,6 +276,13 @@
                 {{ item.schedule.get_discover_interval_display }}
               {% else %}
                 <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.schedule.stale_mode == 'follow_global' %}
+                <span class="badge text-bg-info">Follow Global</span>
+              {% else %}
+                <span class="badge text-bg-warning">Excluded</span>
               {% endif %}
             </td>
             <td>
