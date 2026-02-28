@@ -32,6 +32,13 @@ SCAN_EVENT_TYPE_CHOICES = [
     ('ip_came_up', 'IP Came Up'),
     ('ip_discovered', 'IP Discovered'),
     ('dns_changed', 'DNS Changed'),
+    ('ip_went_stale', 'IP Went Stale'),
+    ('ip_removed_stale', 'Stale IP Removed'),
+]
+
+STALE_MODE_CHOICES = [
+    ('follow_global', 'Follow Global'),
+    ('exclude', 'Exclude'),
 ]
 
 
@@ -74,6 +81,16 @@ class PingResult(NetBoxModel):
         null=True,
         verbose_name='Last Checked',
     )
+    consecutive_down_count = models.IntegerField(
+        default=0,
+        verbose_name='Consecutive Down Count',
+        help_text='Number of consecutive scans where this IP was unreachable',
+    )
+    is_stale = models.BooleanField(
+        default=False,
+        verbose_name='Stale',
+        help_text='IP has been unreachable beyond the configured stale threshold',
+    )
 
     class Meta:
         ordering = ['-last_checked']
@@ -83,6 +100,8 @@ class PingResult(NetBoxModel):
     def __str__(self):
         if self.is_skipped:
             status = 'Skipped'
+        elif self.is_stale:
+            status = 'Stale'
         elif self.is_reachable:
             status = 'Up'
         else:
@@ -94,6 +113,8 @@ class PingResult(NetBoxModel):
 
     def get_status_color(self):
         if self.is_skipped:
+            return 'warning'
+        if self.is_stale:
             return 'warning'
         return 'success' if self.is_reachable else 'danger'
 
@@ -110,6 +131,7 @@ class SubnetScanResult(NetBoxModel):
     hosts_up = models.IntegerField(default=0)
     hosts_down = models.IntegerField(default=0)
     hosts_skipped = models.IntegerField(default=0)
+    hosts_stale = models.IntegerField(default=0)
     last_scanned = models.DateTimeField(
         blank=True,
         null=True,
@@ -355,6 +377,33 @@ class PluginSettings(models.Model):
         verbose_name='Last Digest Sent',
     )
 
+    # ── Stale IP Detection ──
+    stale_enabled = models.BooleanField(
+        default=False,
+        verbose_name='Enable Stale Tagging',
+        help_text='Mark IPs as stale when they have been unreachable beyond the configured thresholds',
+    )
+    stale_scans_threshold = models.IntegerField(
+        default=0,
+        verbose_name='Scans Threshold',
+        help_text='Tag IP as stale after this many consecutive failed scans (0 = ignore scan count)',
+    )
+    stale_days_threshold = models.IntegerField(
+        default=0,
+        verbose_name='Days Threshold',
+        help_text='Tag IP as stale after this many days since last seen online (0 = ignore days)',
+    )
+    stale_remove_enabled = models.BooleanField(
+        default=False,
+        verbose_name='Enable Auto-Remove',
+        help_text='Automatically delete IPs from NetBox when they have been offline beyond the remove threshold',
+    )
+    stale_remove_days = models.IntegerField(
+        default=30,
+        verbose_name='Remove After Days',
+        help_text='Delete IP from NetBox after this many days since last seen online',
+    )
+
     class Meta:
         verbose_name = 'Plugin Settings'
         verbose_name_plural = 'Plugin Settings'
@@ -418,6 +467,13 @@ class PrefixSchedule(models.Model):
         default=1440,
         choices=CUSTOM_INTERVAL_CHOICES,
         verbose_name='Discover Interval',
+    )
+    stale_mode = models.CharField(
+        max_length=20,
+        choices=STALE_MODE_CHOICES,
+        default='follow_global',
+        verbose_name='Stale Detection',
+        help_text='Follow global stale settings or exclude this prefix from stale tagging and auto-removal',
     )
 
     class Meta:

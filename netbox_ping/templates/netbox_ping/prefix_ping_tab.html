@@ -63,6 +63,21 @@
           <td>{{ schedule_form.discover_interval }}</td>
         </tr>
         <tr>
+          <th scope="row" style="width: 30%">Stale Detection</th>
+          <td>
+            <div class="d-flex align-items-center gap-3">
+              {{ schedule_form.stale_mode }}
+              <span class="text-muted" id="stale-global-hint">
+                {% if plugin_settings.stale_enabled %}
+                  Global: <span class="badge text-bg-success">On</span>
+                {% else %}
+                  Global: <span class="badge text-bg-secondary">Off</span>
+                {% endif %}
+              </span>
+            </div>
+          </td>
+        </tr>
+        <tr>
           <th scope="row">Last Scanned</th>
           <td>
             {% if scan_result and scan_result.last_scanned %}
@@ -88,8 +103,11 @@
           <td>
             <span class="badge text-bg-success">{{ scan_result.hosts_up }} up</span>
             <span class="badge text-bg-danger">{{ scan_result.hosts_down }} down</span>
+            {% if scan_result.hosts_stale %}
+              <span class="badge text-bg-warning">{{ scan_result.hosts_stale }} stale</span>
+            {% endif %}
             {% if scan_result.hosts_skipped %}
-              <span class="badge text-bg-warning">{{ scan_result.hosts_skipped }} skipped</span>
+              <span class="badge text-bg-light text-dark">{{ scan_result.hosts_skipped }} skipped</span>
             {% endif %}
             <span class="text-muted ms-1">/ {{ scan_result.total_hosts }} total</span>
           </td>

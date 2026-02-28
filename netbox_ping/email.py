@@ -7,6 +7,25 @@ from html import escape
 from django.utils import timezone
 
 
+# ── State transition mapping ─────────────────────────────────
+# Each event type implies a "from" state and a "to" state.
+EVENT_TRANSITIONS = {
+    'ip_went_down': ('Up', 'Down'),
+    'ip_came_up': ('Down', 'Up'),
+    'ip_discovered': ('New', 'Up'),
+    'ip_went_stale': ('Down', 'Stale'),
+    'ip_removed_stale': ('Stale', 'Deleted'),
+}
+
+STATE_COLORS = {
+    'Up': '#28a745',
+    'Down': '#dc3545',
+    'Stale': '#e67e22',
+    'Deleted': '#6c757d',
+    'New': '#007bff',
+}
+
+
 def _ip_display(event):
     """Format an IP address with optional DNS name for display."""
     ip_str = str(event.ip_address.address.ip) if event.ip_address else 'Unknown'
@@ -16,13 +35,72 @@ def _ip_display(event):
     return ip_str
 
 
-def _group_events_by_prefix(events):
-    """Group events by prefix display string, returns dict of prefix_str -> list of events."""
-    groups = defaultdict(list)
+def _ip_key(event):
+    """Get a stable key for grouping events by IP."""
+    return str(event.ip_address.address.ip) if event.ip_address else 'Unknown'
+
+
+def _build_ip_transitions(events):
+    """
+    Build per-IP state transition chains from events.
+
+    Returns dict of {prefix_str: {ip_str: {'display': str, 'chain': [states], 'current': str}}}
+    Events must be ordered by created_at.
+    """
+    # Group by prefix, then by IP
+    prefix_ip_events = defaultdict(lambda: defaultdict(list))
     for event in events:
+        if event.event_type == 'dns_changed':
+            continue
         prefix_str = str(event.prefix.prefix) if event.prefix else 'No Prefix'
-        groups[prefix_str].append(event)
-    return dict(sorted(groups.items()))
+        ip = _ip_key(event)
+        prefix_ip_events[prefix_str][ip].append(event)
+
+    result = {}
+    for prefix_str in sorted(prefix_ip_events):
+        result[prefix_str] = {}
+        for ip_str, ip_events in sorted(prefix_ip_events[prefix_str].items()):
+            # Build chain: take the "from" of the first event, then all "to" states
+            chain = []
+            display = _ip_display(ip_events[0])
+            for event in ip_events:
+                transition = EVENT_TRANSITIONS.get(event.event_type)
+                if not transition:
+                    continue
+                from_state, to_state = transition
+                if not chain:
+                    chain.append(from_state)
+                chain.append(to_state)
+
+            if chain:
+                result[prefix_str][ip_str] = {
+                    'display': display,
+                    'chain': chain,
+                    'current': chain[-1],
+                }
+
+    return result
+
+
+def _state_badge_html(state):
+    """Render an inline HTML badge for a state."""
+    color = STATE_COLORS.get(state, '#6c757d')
+    return (
+        f'<span style="display:inline-block;padding:2px 8px;border-radius:4px;'
+        f'font-size:12px;font-weight:bold;color:white;background:{color};">'
+        f'{escape(state)}</span>'
+    )
+
+
+def _chain_html(chain):
+    """Render a state transition chain as HTML badges with arrows."""
+    arrow = ' <span style="color:#999;font-size:14px;">&rarr;</span> '
+    return arrow.join(_state_badge_html(s) for s in chain)
+
+
+def _chain_text(chain):
+    """Render a state transition chain as plain text."""
+    return ' -> '.join(chain)
 
 
 def build_digest_email(events, high_util_prefixes, include_details, period_start, period_end, utilization_threshold):
@@ -45,9 +123,13 @@ def build_digest_email(events, high_util_prefixes, include_details, period_start
     came_up = [e for e in events if e.event_type == 'ip_came_up']
     discovered = [e for e in events if e.event_type == 'ip_discovered']
     dns_changed = [e for e in events if e.event_type == 'dns_changed']
+    went_stale = [e for e in events if e.event_type == 'ip_went_stale']
+    removed_stale = [e for e in events if e.event_type == 'ip_removed_stale']
 
-    total_events = len(events)
     period_fmt = f'{period_start:%Y-%m-%d %H:%M} — {period_end:%Y-%m-%d %H:%M} UTC'
+
+    # Build per-IP transition data (excluding dns_changed)
+    transitions = _build_ip_transitions(events)
 
     # Subject line
     parts = []
@@ -57,6 +139,10 @@ def build_digest_email(events, high_util_prefixes, include_details, period_start
         parts.append(f'{len(came_up)} up')
     if discovered:
         parts.append(f'{len(discovered)} discovered')
+    if went_stale:
+        parts.append(f'{len(went_stale)} stale')
+    if removed_stale:
+        parts.append(f'{len(removed_stale)} removed')
     if dns_changed:
         parts.append(f'{len(dns_changed)} DNS changes')
     if high_util_prefixes:
@@ -70,23 +156,26 @@ def build_digest_email(events, high_util_prefixes, include_details, period_start
     # ── Build HTML ──
     html = _build_html(
         went_down, came_up, discovered, dns_changed,
+        went_stale, removed_stale, transitions,
         high_util_prefixes, include_details, period_fmt,
-        total_events, utilization_threshold,
+        utilization_threshold,
     )
 
     # ── Build plaintext ──
     text = _build_text(
         went_down, came_up, discovered, dns_changed,
+        went_stale, removed_stale, transitions,
         high_util_prefixes, include_details, period_fmt,
-        total_events, utilization_threshold,
+        utilization_threshold,
     )
 
     return subject, html, text
 
 
 def _build_html(went_down, came_up, discovered, dns_changed,
+                went_stale, removed_stale, transitions,
                 high_util_prefixes, include_details, period_fmt,
-                total_events, utilization_threshold):
+                utilization_threshold):
     """Build HTML email body with inline styles."""
 
     # Styles
@@ -115,6 +204,8 @@ def _build_html(went_down, came_up, discovered, dns_changed,
         ('IPs Went Down', len(went_down), '#dc3545'),
         ('IPs Came Up', len(came_up), '#28a745'),
         ('New IPs Discovered', len(discovered), '#007bff'),
+        ('IPs Went Stale', len(went_stale), '#e67e22'),
+        ('Stale IPs Removed', len(removed_stale), '#e67e22'),
         ('DNS Changes', len(dns_changed), '#6c757d'),
     ]
     for label, count, color in summary_rows:
@@ -123,16 +214,40 @@ def _build_html(went_down, came_up, discovered, dns_changed,
     h.append('</table>')
     h.append('</div>')
 
-    # Detail sections (if enabled)
-    if include_details:
-        if went_down:
-            h.append(_html_event_section('IPs Went Down', went_down, '#dc3545', td_style, th_style, table_style, section_style))
-        if came_up:
-            h.append(_html_event_section('IPs Came Up', came_up, '#28a745', td_style, th_style, table_style, section_style))
-        if discovered:
-            h.append(_html_event_section('Newly Discovered IPs', discovered, '#007bff', td_style, th_style, table_style, section_style))
-        if dns_changed:
-            h.append(_html_dns_section(dns_changed, td_style, th_style, table_style, section_style))
+    # State transitions detail (if enabled)
+    if include_details and transitions:
+        h.append(f'<div style="{section_style}">')
+        h.append('<h3 style="margin-top: 0; color: #2c3e50;">State Changes</h3>')
+
+        for prefix_str, ips in transitions.items():
+            h.append(f'<h4 style="margin: 10px 0 5px 0; color: #555;">[{escape(prefix_str)}]</h4>')
+            h.append(f'<table style="{table_style}">')
+            h.append(f'<tr><th style="{th_style}">IP Address</th><th style="{th_style}">Transition</th></tr>')
+            for ip_str, data in ips.items():
+                chain_badges = _chain_html(data['chain'])
+                h.append(
+                    f'<tr><td style="{td_style}">{escape(data["display"])}</td>'
+                    f'<td style="{td_style}">{chain_badges}</td></tr>'
+                )
+            h.append('</table>')
+
+        h.append('</div>')
+
+    # DNS changes detail (if enabled)
+    if include_details and dns_changed:
+        h.append(f'<div style="{section_style}">')
+        h.append('<h3 style="margin-top: 0; color: #6c757d;">DNS Changes</h3>')
+        h.append(f'<table style="{table_style}">')
+        h.append(f'<tr><th style="{th_style}">IP Address</th><th style="{th_style}">Old DNS</th><th style="{th_style}">New DNS</th></tr>')
+        for event in dns_changed:
+            ip_str = str(event.ip_address.address.ip) if event.ip_address else 'Unknown'
+            old_dns = event.detail.get('old_dns', '')
+            new_dns = event.detail.get('new_dns', '')
+            h.append(f'<tr><td style="{td_style}">{escape(ip_str)}</td>'
+                      f'<td style="{td_style}">{escape(old_dns) or "<em>empty</em>"}</td>'
+                      f'<td style="{td_style}">{escape(new_dns) or "<em>empty</em>"}</td></tr>')
+        h.append('</table>')
+        h.append('</div>')
 
     # High utilization section
     if high_util_prefixes:
@@ -156,56 +271,10 @@ def _build_html(went_down, came_up, discovered, dns_changed,
     return '\n'.join(h)
 
 
-def _html_event_section(title, events, color, td_style, th_style, table_style, section_style):
-    """Build an HTML section for a group of IP events, grouped by prefix."""
-    lines = []
-    lines.append(f'<div style="{section_style}">')
-    lines.append(f'<h3 style="margin-top: 0; color: {color};">{escape(title)}</h3>')
-
-    grouped = _group_events_by_prefix(events)
-    for prefix_str, prefix_events in grouped.items():
-        lines.append(f'<h4 style="margin: 10px 0 5px 0; color: #555;">[{escape(prefix_str)}]</h4>')
-        lines.append(f'<table style="{table_style}">')
-        lines.append(f'<tr><th style="{th_style}">IP Address</th><th style="{th_style}">Details</th></tr>')
-        for event in prefix_events:
-            ip_str = _ip_display(event)
-            detail_parts = []
-            rtt = event.detail.get('response_time_ms')
-            if rtt is not None:
-                detail_parts.append(f'RTT: {rtt:.1f}ms')
-            last_rtt = event.detail.get('last_response_ms')
-            if last_rtt is not None:
-                detail_parts.append(f'Last RTT: {last_rtt:.1f}ms')
-            detail_str = ', '.join(detail_parts) if detail_parts else '—'
-            lines.append(f'<tr><td style="{td_style}">{escape(ip_str)}</td><td style="{td_style}">{escape(detail_str)}</td></tr>')
-        lines.append('</table>')
-
-    lines.append('</div>')
-    return '\n'.join(lines)
-
-
-def _html_dns_section(events, td_style, th_style, table_style, section_style):
-    """Build HTML section for DNS change events."""
-    lines = []
-    lines.append(f'<div style="{section_style}">')
-    lines.append('<h3 style="margin-top: 0; color: #6c757d;">DNS Changes</h3>')
-    lines.append(f'<table style="{table_style}">')
-    lines.append(f'<tr><th style="{th_style}">IP Address</th><th style="{th_style}">Old DNS</th><th style="{th_style}">New DNS</th></tr>')
-    for event in events:
-        ip_str = str(event.ip_address.address.ip) if event.ip_address else 'Unknown'
-        old_dns = event.detail.get('old_dns', '')
-        new_dns = event.detail.get('new_dns', '')
-        lines.append(f'<tr><td style="{td_style}">{escape(ip_str)}</td>'
-                      f'<td style="{td_style}">{escape(old_dns) or "<em>empty</em>"}</td>'
-                      f'<td style="{td_style}">{escape(new_dns) or "<em>empty</em>"}</td></tr>')
-    lines.append('</table>')
-    lines.append('</div>')
-    return '\n'.join(lines)
-
-
 def _build_text(went_down, came_up, discovered, dns_changed,
+                went_stale, removed_stale, transitions,
                 high_util_prefixes, include_details, period_fmt,
-                total_events, utilization_threshold):
+                utilization_threshold):
     """Build plaintext email body."""
     lines = []
     lines.append('NetBox Ping Report')
@@ -219,37 +288,32 @@ def _build_text(went_down, came_up, discovered, dns_changed,
     lines.append(f'  IPs Went Down:      {len(went_down)}')
     lines.append(f'  IPs Came Up:        {len(came_up)}')
     lines.append(f'  New IPs Discovered: {len(discovered)}')
+    lines.append(f'  IPs Went Stale:     {len(went_stale)}')
+    lines.append(f'  Stale IPs Removed:  {len(removed_stale)}')
     lines.append(f'  DNS Changes:        {len(dns_changed)}')
     lines.append('')
 
-    if include_details:
-        if went_down:
-            lines.append('IPS WENT DOWN')
-            lines.append('-' * 30)
-            lines.extend(_text_event_lines(went_down))
-            lines.append('')
+    # State transitions detail
+    if include_details and transitions:
+        lines.append('STATE CHANGES')
+        lines.append('-' * 30)
+        for prefix_str, ips in transitions.items():
+            lines.append(f'  [{prefix_str}]')
+            for ip_str, data in ips.items():
+                chain_str = _chain_text(data['chain'])
+                lines.append(f'    {data["display"]:40s}  {chain_str}')
+        lines.append('')
 
-        if came_up:
-            lines.append('IPS CAME UP')
-            lines.append('-' * 30)
-            lines.extend(_text_event_lines(came_up))
-            lines.append('')
-
-        if discovered:
-            lines.append('NEWLY DISCOVERED IPS')
-            lines.append('-' * 30)
-            lines.extend(_text_event_lines(discovered))
-            lines.append('')
-
-        if dns_changed:
-            lines.append('DNS CHANGES')
-            lines.append('-' * 30)
-            for event in dns_changed:
-                ip_str = str(event.ip_address.address.ip) if event.ip_address else 'Unknown'
-                old_dns = event.detail.get('old_dns', '') or '(empty)'
-                new_dns = event.detail.get('new_dns', '') or '(empty)'
-                lines.append(f'  {ip_str}: {old_dns} -> {new_dns}')
-            lines.append('')
+    # DNS changes detail
+    if include_details and dns_changed:
+        lines.append('DNS CHANGES')
+        lines.append('-' * 30)
+        for event in dns_changed:
+            ip_str = str(event.ip_address.address.ip) if event.ip_address else 'Unknown'
+            old_dns = event.detail.get('old_dns', '') or '(empty)'
+            new_dns = event.detail.get('new_dns', '') or '(empty)'
+            lines.append(f'  {ip_str}: {old_dns} -> {new_dns}')
+        lines.append('')
 
     if high_util_prefixes:
         lines.append(f'PREFIXES >= {utilization_threshold}% UTILIZATION')
@@ -263,17 +327,6 @@ def _build_text(went_down, came_up, discovered, dns_changed,
     return '\n'.join(lines)
 
 
-def _text_event_lines(events):
-    """Build plaintext lines for IP events grouped by prefix."""
-    lines = []
-    grouped = _group_events_by_prefix(events)
-    for prefix_str, prefix_events in grouped.items():
-        lines.append(f'  [{prefix_str}]')
-        for event in prefix_events:
-            lines.append(f'    {_ip_display(event)}')
-    return lines
-
-
 def build_test_email():
     """
     Build a test digest email with sample data to verify SMTP settings.
@@ -284,27 +337,31 @@ def build_test_email():
 
     # Create lightweight mock events (no DB access)
     class _MockIP:
-        class address:
-            ip = '10.0.1.5'
+        def __init__(self, ip='10.0.1.5'):
+            self.address = type('addr', (), {'ip': ip})()
 
     class _MockPrefix:
         prefix = '10.0.1.0/24'
 
     class _MockEvent:
-        def __init__(self, event_type, detail):
+        def __init__(self, event_type, detail, ip='10.0.1.5'):
             self.event_type = event_type
-            self.ip_address = _MockIP()
+            self.ip_address = _MockIP(ip)
             self.prefix = _MockPrefix()
             self.detail = detail
 
-        def get_event_type_display(self):
-            return self.event_type
-
+    # Sample events showing various transitions — each IP has a unique address
     sample_events = [
-        _MockEvent('ip_went_down', {'dns_name': 'switch-core.example.com', 'last_response_ms': 1.2}),
-        _MockEvent('ip_came_up', {'dns_name': 'server01.example.com', 'response_time_ms': 0.8}),
-        _MockEvent('ip_discovered', {'dns_name': 'printer.example.com', 'response_time_ms': 3.1}),
-        _MockEvent('dns_changed', {'old_dns': 'old-host.example.com', 'new_dns': 'new-host.example.com'}),
+        _MockEvent('ip_went_down', {'dns_name': 'switch-core.example.com', 'last_response_ms': 1.2}, ip='10.0.1.1'),
+        _MockEvent('ip_came_up', {'dns_name': 'server01.example.com', 'response_time_ms': 0.8}, ip='10.0.1.2'),
+        _MockEvent('ip_discovered', {'dns_name': 'printer.example.com', 'response_time_ms': 3.1}, ip='10.0.1.3'),
+        _MockEvent('ip_went_stale', {'dns_name': 'old-server.example.com', 'consecutive_down_count': 10, 'last_seen': '2025-01-15 12:00:00'}, ip='10.0.1.4'),
+        _MockEvent('ip_removed_stale', {'dns_name': 'decomm.example.com', 'ip_address': '10.0.1.99/24', 'last_seen': None}, ip='10.0.1.5'),
+        # Multi-transition: went down then came back up
+        _MockEvent('ip_went_down', {'dns_name': 'flaky-host.example.com', 'last_response_ms': 2.5}, ip='10.0.1.6'),
+        _MockEvent('ip_came_up', {'dns_name': 'flaky-host.example.com', 'response_time_ms': 1.1}, ip='10.0.1.6'),
+        # DNS change (separate section)
+        _MockEvent('dns_changed', {'old_dns': 'old-host.example.com', 'new_dns': 'new-host.example.com'}, ip='10.0.1.7'),
     ]
 
     class _MockSSR:

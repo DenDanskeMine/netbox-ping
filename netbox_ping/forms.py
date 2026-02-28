@@ -1,13 +1,41 @@
 from django import forms
 from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm
 from utilities.forms.rendering import FieldSet
-from .models import PingResult, SubnetScanResult, PluginSettings, PrefixSchedule
+from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule
 
 
 class PingResultFilterForm(NetBoxModelFilterSetForm):
     """Filter form for PingResult list view."""
 
     model = PingResult
+    fieldsets = (
+        FieldSet('q', 'filter_id'),
+        FieldSet('is_reachable', 'is_stale', name='Status'),
+    )
+    is_reachable = forms.NullBooleanField(
+        required=False,
+        label='Reachable',
+        widget=forms.Select(choices=[
+            ('', '---------'),
+            ('true', 'Yes'),
+            ('false', 'No'),
+        ]),
+    )
+    is_stale = forms.NullBooleanField(
+        required=False,
+        label='Stale',
+        widget=forms.Select(choices=[
+            ('', '---------'),
+            ('true', 'Yes'),
+            ('false', 'No'),
+        ]),
+    )
+
+
+class PingHistoryFilterForm(NetBoxModelFilterSetForm):
+    """Filter form for PingHistory list view."""
+
+    model = PingHistory
     fieldsets = (
         FieldSet('q', 'filter_id'),
         FieldSet('is_reachable', name='Status'),
@@ -44,6 +72,8 @@ class PluginSettingsForm(NetBoxModelForm):
             'auto_discover_enabled', 'auto_discover_interval',
             'max_prefix_size', 'ping_history_max_records',
             'ping_concurrency', 'ping_timeout', 'skip_reserved_ips',
+            'stale_enabled', 'stale_scans_threshold', 'stale_days_threshold',
+            'stale_remove_enabled', 'stale_remove_days',
             'email_notifications_enabled', 'email_recipients',
             'email_digest_interval', 'email_include_details',
             'email_utilization_threshold', 'email_on_change_only',
@@ -64,4 +94,5 @@ class PrefixScheduleForm(forms.ModelForm):
         fields = (
             'scan_mode', 'scan_interval',
             'discover_mode', 'discover_interval',
+            'stale_mode',
         )

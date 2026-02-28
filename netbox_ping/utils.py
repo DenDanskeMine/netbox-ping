@@ -4,6 +4,7 @@ import socket
 import subprocess
 import time
 import concurrent.futures
+from datetime import timedelta
 from ipaddress import ip_network
 
 import dns.resolver
@@ -193,6 +194,10 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
             existing.last_checked = now
             if ping_data['is_reachable']:
                 existing.last_seen = now
+                existing.consecutive_down_count = 0
+                existing.is_stale = False
+            else:
+                existing.consecutive_down_count += 1
             to_update.append(existing)
         else:
             to_create.append(PingResult(
@@ -203,6 +208,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
                 dns_name=dns_name,
                 last_checked=now,
                 last_seen=now if ping_data['is_reachable'] else None,
+                consecutive_down_count=0 if ping_data['is_reachable'] else 1,
             ))
 
         history_records.append(PingHistory(
@@ -261,7 +267,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
 
     BATCH = 1000
     if to_update:
-        update_fields = ['is_reachable', 'is_skipped', 'response_time_ms', 'dns_name', 'last_checked', 'last_seen']
+        update_fields = ['is_reachable', 'is_skipped', 'response_time_ms', 'dns_name', 'last_checked', 'last_seen', 'consecutive_down_count', 'is_stale']
         for i in range(0, len(to_update), BATCH):
             PingResult.objects.bulk_update(to_update[i:i + BATCH], update_fields)
         msg = f'Bulk updated {len(to_update)} existing results'
@@ -305,18 +311,140 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         log.info(msg)
         print(f'[Scan] {msg}', flush=True)
 
-    total = len(ip_addresses)
+    # Phase 4: Stale IP detection
+    from .models import PrefixSchedule
+    stale_settings = dns_settings  # reuse the PluginSettings object passed in
+    stale_excluded = False
+    if stale_settings:
+        try:
+            prefix_schedule = PrefixSchedule.objects.get(prefix=prefix_obj)
+            if prefix_schedule.stale_mode == 'exclude':
+                stale_excluded = True
+        except PrefixSchedule.DoesNotExist:
+            pass
+
+    stale_events = []
+    stale_to_update = []
+    ips_to_remove = []
+
+    if stale_settings and not stale_excluded:
+        # Phase 4a: Tag stale IPs
+        if stale_settings.stale_enabled:
+            scans_thresh = stale_settings.stale_scans_threshold
+            days_thresh = stale_settings.stale_days_threshold
+
+            if scans_thresh > 0 or days_thresh > 0:
+                # Get all down, non-stale PingResults for this prefix
+                candidate_prs = PingResult.objects.filter(
+                    ip_address__in=[ip.pk for ip in ip_addresses],
+                    is_reachable=False,
+                    is_skipped=False,
+                    is_stale=False,
+                ).select_related('ip_address')
+
+                for pr in candidate_prs:
+                    is_stale_now = False
+                    if scans_thresh > 0 and pr.consecutive_down_count >= scans_thresh:
+                        is_stale_now = True
+                    if days_thresh > 0:
+                        if pr.last_seen is not None:
+                            if (now - pr.last_seen) >= timedelta(days=days_thresh):
+                                is_stale_now = True
+                        elif pr.last_checked is not None:
+                            # Never seen online — use last_checked as reference
+                            if (now - pr.last_checked) >= timedelta(days=days_thresh):
+                                is_stale_now = True
+
+                    if is_stale_now:
+                        pr.is_stale = True
+                        stale_to_update.append(pr)
+                        stale_events.append(ScanEvent(
+                            event_type='ip_went_stale',
+                            prefix=prefix_obj,
+                            ip_address=pr.ip_address,
+                            detail={
+                                'dns_name': pr.dns_name or '',
+                                'consecutive_down_count': pr.consecutive_down_count,
+                                'last_seen': str(pr.last_seen) if pr.last_seen else None,
+                            },
+                        ))
+
+                if stale_to_update:
+                    for i in range(0, len(stale_to_update), BATCH):
+                        PingResult.objects.bulk_update(stale_to_update[i:i + BATCH], ['is_stale'])
+                    msg = f'Tagged {len(stale_to_update)} IP(s) as stale'
+                    log.info(msg)
+                    print(f'[Scan] {msg}', flush=True)
+
+        # Phase 4b: Auto-remove stale IPs
+        if stale_settings.stale_remove_enabled and stale_settings.stale_remove_days > 0:
+            remove_cutoff = now - timedelta(days=stale_settings.stale_remove_days)
+            from django.db.models import Q
+            removable_prs = PingResult.objects.filter(
+                ip_address__in=[ip.pk for ip in ip_addresses],
+                is_reachable=False,
+                is_skipped=False,
+                is_stale=True,
+            ).filter(
+                Q(last_seen__lte=remove_cutoff) | Q(last_seen__isnull=True)
+            ).select_related('ip_address')
+
+            for pr in removable_prs:
+                stale_events.append(ScanEvent(
+                    event_type='ip_removed_stale',
+                    prefix=prefix_obj,
+                    ip_address=pr.ip_address,
+                    detail={
+                        'dns_name': pr.dns_name or '',
+                        'ip_address': str(pr.ip_address.address),
+                        'last_seen': str(pr.last_seen) if pr.last_seen else None,
+                    },
+                ))
+                ips_to_remove.append(pr.ip_address_id)
+
+            if ips_to_remove:
+                # Create events before deleting (ip_address FK will cascade)
+                for i in range(0, len(stale_events), BATCH):
+                    ScanEvent.objects.bulk_create(stale_events[i:i + BATCH])
+                stale_events = []  # already saved
+                from ipam.models import IPAddress as IPAddressModel
+                deleted_count = IPAddressModel.objects.filter(pk__in=ips_to_remove).delete()[0]
+                msg = f'Auto-removed {deleted_count} stale IP(s) from NetBox'
+                log.info(msg)
+                print(f'[Scan] {msg}', flush=True)
+
+    # Save any remaining stale events
+    if stale_events:
+        for i in range(0, len(stale_events), BATCH):
+            ScanEvent.objects.bulk_create(stale_events[i:i + BATCH])
+
+    # Calculate actual subnet size for correct utilization
+    network = ip_network(prefix_obj.prefix, strict=False)
+    subnet_size = max(network.num_addresses - 2, 1) if network.prefixlen < 31 else network.num_addresses
+
     up = sum(1 for _, r, _, _ in ping_results if r['is_reachable'])
     skipped = len(skipped_ips)
-    down = total - up - skipped
+    removed = len(ips_to_remove)
+    tracked = len(ip_addresses)
+    down = tracked - up - skipped - removed
+
+    # Count stale IPs (remaining after removal)
+    stale_count = PingResult.objects.filter(
+        ip_address__in=[ip.pk for ip in ip_addresses],
+        is_stale=True,
+    ).count() if not ips_to_remove else PingResult.objects.filter(
+        ip_address__in=[ip.pk for ip in ip_addresses if ip.pk not in ips_to_remove],
+        is_stale=True,
+    ).count()
 
     SubnetScanResult.objects.update_or_create(
         prefix=prefix_obj,
         defaults={
-            'total_hosts': total,
+            'total_hosts': subnet_size,
             'hosts_up': up,
             'hosts_down': down,
             'hosts_skipped': skipped,
+            'hosts_stale': stale_count,
             'last_scanned': timezone.now(),
         },
     )
@@ -324,8 +452,12 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     state_changes = {}
     for event in scan_events:
         state_changes[event.event_type] = state_changes.get(event.event_type, 0) + 1
+    if stale_to_update:
+        state_changes['ip_went_stale'] = len(stale_to_update)
+    if ips_to_remove:
+        state_changes['ip_removed_stale'] = len(ips_to_remove)
 
-    return {'total': total, 'up': up, 'down': down, 'skipped': skipped, 'state_changes': state_changes}
+    return {'total': tracked, 'up': up, 'down': down, 'skipped': skipped, 'stale': stale_count, 'removed': removed, 'state_changes': state_changes}
 
 
 def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None):

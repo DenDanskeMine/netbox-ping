@@ -22,6 +22,8 @@
             <td>
               {% if ping_result.is_skipped %}
                 <span class="badge text-bg-warning">Skipped</span>
+              {% elif ping_result.is_stale %}
+                <span class="badge text-bg-warning">Stale</span>
               {% elif ping_result.is_reachable %}
                 <span class="badge text-bg-success">Up</span>
               {% else %}
@@ -29,6 +31,12 @@
               {% endif %}
             </td>
           </tr>
+          {% if ping_result.consecutive_down_count > 0 %}
+          <tr>
+            <th scope="row">Consecutive Down</th>
+            <td>{{ ping_result.consecutive_down_count }} scan{{ ping_result.consecutive_down_count|pluralize }}</td>
+          </tr>
+          {% endif %}
           <tr>
             <th scope="row">RTT</th>
             <td>{{ ping_result.response_time_ms|default:"N/A" }}{% if ping_result.response_time_ms %} ms{% endif %}</td>

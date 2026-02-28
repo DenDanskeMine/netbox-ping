@@ -1,0 +1,26 @@
+{% extends 'generic/object_list.html' %}
+
+{% block extra_controls %}
+  <div class="btn-group" role="group" aria-label="Quick filters">
+    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}"
+       class="btn btn-sm {% if not request.GET.is_reachable and not request.GET.is_stale and not request.GET.is_skipped %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+      All
+    </a>
+    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_reachable=true&is_stale=false"
+       class="btn btn-sm {% if request.GET.is_reachable == 'true' %}btn-success{% else %}btn-outline-success{% endif %}">
+      <span class="mdi mdi-check-circle"></span> Up
+    </a>
+    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_reachable=false&is_stale=false"
+       class="btn btn-sm {% if request.GET.is_reachable == 'false' and request.GET.is_stale == 'false' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+      <span class="mdi mdi-close-circle"></span> Down
+    </a>
+    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_stale=true"
+       class="btn btn-sm {% if request.GET.is_stale == 'true' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+      <span class="mdi mdi-clock-alert"></span> Stale
+    </a>
+    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_skipped=true"
+       class="btn btn-sm {% if request.GET.is_skipped == 'true' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+      <span class="mdi mdi-skip-next"></span> Skipped
+    </a>
+  </div>
+{% endblock %}
