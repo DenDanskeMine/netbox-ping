@@ -10,7 +10,7 @@ class PingResultFilterForm(NetBoxModelFilterSetForm):
     model = PingResult
     fieldsets = (
         FieldSet('q', 'filter_id'),
-        FieldSet('is_reachable', 'is_stale', name='Status'),
+        FieldSet('is_reachable', 'is_stale', 'is_new', name='Status'),
     )
     is_reachable = forms.NullBooleanField(
         required=False,
@@ -24,6 +24,15 @@ class PingResultFilterForm(NetBoxModelFilterSetForm):
     is_stale = forms.NullBooleanField(
         required=False,
         label='Stale',
+        widget=forms.Select(choices=[
+            ('', '---------'),
+            ('true', 'Yes'),
+            ('false', 'No'),
+        ]),
+    )
+    is_new = forms.NullBooleanField(
+        required=False,
+        label='New',
         widget=forms.Select(choices=[
             ('', '---------'),
             ('true', 'Yes'),
@@ -74,6 +83,7 @@ class PluginSettingsForm(NetBoxModelForm):
             'ping_concurrency', 'ping_timeout', 'skip_reserved_ips',
             'stale_enabled', 'stale_scans_threshold', 'stale_days_threshold',
             'stale_remove_enabled', 'stale_remove_days',
+            'new_ip_days_threshold',
             'email_notifications_enabled', 'email_recipients',
             'email_digest_interval', 'email_include_details',
             'email_utilization_threshold', 'email_on_change_only',

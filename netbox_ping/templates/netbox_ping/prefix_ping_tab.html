@@ -103,11 +103,14 @@
           <td>
             <span class="badge text-bg-success">{{ scan_result.hosts_up }} up</span>
             <span class="badge text-bg-danger">{{ scan_result.hosts_down }} down</span>
+            {% if scan_result.hosts_new %}
+              <span class="badge text-bg-info">{{ scan_result.hosts_new }} new</span>
+            {% endif %}
             {% if scan_result.hosts_stale %}
-              <span class="badge text-bg-warning">{{ scan_result.hosts_stale }} stale</span>
+              <span class="badge" style="background-color:#e67e22;color:#fff;">{{ scan_result.hosts_stale }} stale</span>
             {% endif %}
             {% if scan_result.hosts_skipped %}
-              <span class="badge text-bg-light text-dark">{{ scan_result.hosts_skipped }} skipped</span>
+              <span class="badge text-bg-warning">{{ scan_result.hosts_skipped }} skipped</span>
             {% endif %}
             <span class="text-muted ms-1">/ {{ scan_result.total_hosts }} total</span>
           </td>

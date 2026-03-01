@@ -7,6 +7,7 @@ class PingResultSerializer(NetBoxModelSerializer):
         model = PingResult
         fields = (
             'id', 'url', 'display', 'ip_address', 'is_reachable',
+            'is_new', 'discovered_at',
             'last_seen', 'response_time_ms', 'dns_name', 'last_checked',
             'tags', 'custom_fields', 'created', 'last_updated',
         )
@@ -29,7 +30,7 @@ class SubnetScanResultSerializer(NetBoxModelSerializer):
         model = SubnetScanResult
         fields = (
             'id', 'url', 'display', 'prefix', 'total_hosts', 'hosts_up',
-            'hosts_down', 'last_scanned', 'last_discovered',
+            'hosts_down', 'hosts_new', 'last_scanned', 'last_discovered',
             'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'prefix', 'hosts_up', 'total_hosts')

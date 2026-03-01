@@ -13,6 +13,12 @@
         <th scope="row">Hosts Down</th>
         <td><span class="badge text-bg-danger">{{ scan_result.hosts_down }}</span></td>
       </tr>
+      {% if scan_result.hosts_new %}
+      <tr>
+        <th scope="row">Hosts New</th>
+        <td><span class="badge text-bg-info">{{ scan_result.hosts_new }}</span></td>
+      </tr>
+      {% endif %}
       <tr>
         <th scope="row">Total</th>
         <td>{{ scan_result.total_hosts }}</td>

@@ -8,6 +8,7 @@ class PingResultFilterSet(NetBoxModelFilterSet):
     is_reachable = django_filters.BooleanFilter()
     is_skipped = django_filters.BooleanFilter()
     is_stale = django_filters.BooleanFilter()
+    is_new = django_filters.BooleanFilter()
     dns_name = django_filters.CharFilter(lookup_expr='icontains')
     last_checked_before = django_filters.DateTimeFilter(
         field_name='last_checked', lookup_expr='lte',
@@ -18,7 +19,7 @@ class PingResultFilterSet(NetBoxModelFilterSet):
 
     class Meta:
         model = PingResult
-        fields = ('id', 'is_reachable', 'is_skipped', 'is_stale', 'dns_name', 'ip_address')
+        fields = ('id', 'is_reachable', 'is_skipped', 'is_stale', 'is_new', 'dns_name', 'ip_address')
 
     def search(self, queryset, name, value):
         if not value.strip():

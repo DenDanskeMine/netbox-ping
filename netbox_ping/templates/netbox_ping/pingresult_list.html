@@ -3,11 +3,15 @@
 {% block extra_controls %}
   <div class="btn-group" role="group" aria-label="Quick filters">
     <a href="{% url 'plugins:netbox_ping:pingresult_list' %}"
-       class="btn btn-sm {% if not request.GET.is_reachable and not request.GET.is_stale and not request.GET.is_skipped %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+       class="btn btn-sm {% if not request.GET.is_reachable and not request.GET.is_stale and not request.GET.is_skipped and not request.GET.is_new %}btn-primary{% else %}btn-outline-secondary{% endif %}">
       All
     </a>
-    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_reachable=true&is_stale=false"
-       class="btn btn-sm {% if request.GET.is_reachable == 'true' %}btn-success{% else %}btn-outline-success{% endif %}">
+    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_new=true"
+       class="btn btn-sm {% if request.GET.is_new == 'true' %}btn-info{% else %}btn-outline-info{% endif %}">
+      <span class="mdi mdi-new-box"></span> New
+    </a>
+    <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_reachable=true&is_stale=false&is_new=false"
+       class="btn btn-sm {% if request.GET.is_reachable == 'true' and request.GET.is_new == 'false' %}btn-success{% else %}btn-outline-success{% endif %}">
       <span class="mdi mdi-check-circle"></span> Up
     </a>
     <a href="{% url 'plugins:netbox_ping:pingresult_list' %}?is_reachable=false&is_stale=false"

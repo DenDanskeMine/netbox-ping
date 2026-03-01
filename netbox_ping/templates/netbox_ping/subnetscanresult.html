@@ -34,16 +34,22 @@
             <th scope="row">Hosts Down</th>
             <td><span class="badge text-bg-danger">{{ object.hosts_down }}</span></td>
           </tr>
+          {% if object.hosts_new %}
+          <tr>
+            <th scope="row">Hosts New</th>
+            <td><span class="badge text-bg-info">{{ object.hosts_new }}</span></td>
+          </tr>
+          {% endif %}
           {% if object.hosts_stale %}
           <tr>
             <th scope="row">Hosts Stale</th>
-            <td><span class="badge text-bg-warning">{{ object.hosts_stale }}</span></td>
+            <td><span class="badge" style="background-color:#e67e22;color:#fff;">{{ object.hosts_stale }}</span></td>
           </tr>
           {% endif %}
           {% if object.hosts_skipped %}
           <tr>
             <th scope="row">Hosts Skipped</th>
-            <td><span class="badge text-bg-light text-dark">{{ object.hosts_skipped }}</span></td>
+            <td><span class="badge text-bg-warning">{{ object.hosts_skipped }}</span></td>
           </tr>
           {% endif %}
           <tr>

@@ -91,6 +91,17 @@ class PingResult(NetBoxModel):
         verbose_name='Stale',
         help_text='IP has been unreachable beyond the configured stale threshold',
     )
+    is_new = models.BooleanField(
+        default=False,
+        verbose_name='New',
+        help_text='IP was recently auto-discovered',
+    )
+    discovered_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Discovered At',
+        help_text='When this IP was first auto-discovered',
+    )
 
     class Meta:
         ordering = ['-last_checked']
@@ -106,6 +117,8 @@ class PingResult(NetBoxModel):
             status = 'Up'
         else:
             status = 'Down'
+        if self.is_new:
+            status += ' (New)'
         return f'{self.ip_address} — {status}'
 
     def get_absolute_url(self):
@@ -132,6 +145,7 @@ class SubnetScanResult(NetBoxModel):
     hosts_down = models.IntegerField(default=0)
     hosts_skipped = models.IntegerField(default=0)
     hosts_stale = models.IntegerField(default=0)
+    hosts_new = models.IntegerField(default=0)
     last_scanned = models.DateTimeField(
         blank=True,
         null=True,
@@ -402,6 +416,13 @@ class PluginSettings(models.Model):
         default=30,
         verbose_name='Remove After Days',
         help_text='Delete IP from NetBox after this many days since last seen online',
+    )
+
+    # ── New IP Badge ──
+    new_ip_days_threshold = models.PositiveIntegerField(
+        default=7,
+        verbose_name='New IP Badge Duration (days)',
+        help_text='Show "New" badge on auto-discovered IPs for this many days (0 = disabled)',
     )
 
     class Meta:

@@ -7,13 +7,16 @@ from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
 
 PINGRESULT_STATUS_TEMPLATE = '''
 {% if record.is_skipped %}
-    <span class="badge text-bg-light text-dark">Skipped</span>
+    <span class="badge text-bg-warning">Skipped</span>
 {% elif record.is_stale %}
-    <span class="badge text-bg-warning">Stale</span>
+    <span class="badge" style="background-color:#e67e22;color:#fff;">Stale</span>
 {% elif record.is_reachable %}
     <span class="badge text-bg-success">Up</span>
 {% else %}
     <span class="badge text-bg-danger">Down</span>
+{% endif %}
+{% if record.is_new %}
+    <span class="badge text-bg-info">New</span>
 {% endif %}
 '''
 
@@ -133,6 +136,7 @@ class SubnetScanResultTable(NetBoxTable):
     hosts_down = tables.Column(verbose_name='Hosts Down')
     hosts_skipped = tables.Column(verbose_name='Hosts Skipped')
     hosts_stale = tables.Column(verbose_name='Hosts Stale')
+    hosts_new = tables.Column(verbose_name='Hosts New')
     last_scanned = tables.DateTimeColumn(verbose_name='Last Scanned')
     last_discovered = tables.DateTimeColumn(verbose_name='Last Discovered')
     actions = columns.ActionsColumn(
@@ -143,10 +147,10 @@ class SubnetScanResultTable(NetBoxTable):
         model = SubnetScanResult
         fields = (
             'pk', 'id', 'prefix', 'total_hosts', 'hosts_up',
-            'hosts_down', 'hosts_skipped', 'hosts_stale', 'last_scanned', 'last_discovered', 'actions',
+            'hosts_down', 'hosts_skipped', 'hosts_stale', 'hosts_new', 'last_scanned', 'last_discovered', 'actions',
         )
         default_columns = (
-            'prefix', 'total_hosts', 'hosts_up', 'hosts_down', 'hosts_skipped', 'hosts_stale', 'last_scanned',
+            'prefix', 'total_hosts', 'hosts_up', 'hosts_down', 'hosts_skipped', 'hosts_stale', 'hosts_new', 'last_scanned',
         )
 
 
@@ -170,11 +174,14 @@ PING_STATUS_TEMPLATE = '''
     {% if record.ping_result.is_skipped %}
         <span class="badge text-bg-warning">Skipped</span>
     {% elif record.ping_result.is_stale %}
-        <span class="badge text-bg-warning">Stale</span>
+        <span class="badge" style="background-color:#e67e22;color:#fff;">Stale</span>
     {% elif record.ping_result.is_reachable %}
         <span class="badge text-bg-success">Up</span>
     {% else %}
         <span class="badge text-bg-danger">Down</span>
+    {% endif %}
+    {% if record.ping_result.is_new %}
+        <span class="badge text-bg-info">New</span>
     {% endif %}
 {% else %}
     <span class="text-muted">&mdash;</span>
@@ -186,8 +193,11 @@ SCAN_STATUS_TEMPLATE = '''
     <span class="badge text-bg-info">
         {{ record.scan_result.hosts_up }}/{{ record.scan_result.total_hosts }} up
     </span>
+    {% if record.scan_result.hosts_new %}
+        <span class="badge text-bg-info">{{ record.scan_result.hosts_new }} new</span>
+    {% endif %}
     {% if record.scan_result.hosts_stale %}
-        <span class="badge text-bg-warning">{{ record.scan_result.hosts_stale }} stale</span>
+        <span class="badge" style="background-color:#e67e22;color:#fff;">{{ record.scan_result.hosts_stale }} stale</span>
     {% endif %}
     {% if record.scan_result.hosts_skipped %}
         <span class="badge text-bg-warning">{{ record.scan_result.hosts_skipped }} skipped</span>
