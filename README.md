@@ -8,7 +8,10 @@
 
 A NetBox plugin for pinging, discovering, and monitoring IP addresses directly from your NetBox instance.
 
+
 **Other plugins:** [NetBox Map](https://github.com/DenDanskeMine/netbox-map) | [Website](https://www.danbyte.net/) | [Demo](https://demo.danbyte.net/)
+
+<img width="960" height="340" alt="banner" src="https://github.com/user-attachments/assets/2254bd0b-7a91-4206-a4e7-81a1e4a3cb73" />
 
 ## Features
 
@@ -20,6 +23,7 @@ A NetBox plugin for pinging, discovering, and monitoring IP addresses directly f
 - Skip reserved IPs during scans
 
 **Monitoring**
+
 - Stale IP detection -- tag IPs as stale after X failed scans or X days offline
 - Auto-remove stale IPs from NetBox after a configurable threshold
 - Per-prefix exclusion from stale detection for critical infrastructure
