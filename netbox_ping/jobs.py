@@ -288,11 +288,25 @@ class AutoScanDispatcherJob(JobRunner):
                 print(f'[Dispatcher] Trimmed {deleted} history records', flush=True)
 
         # Prune old ScanEvent records (older than 7 days)
-        from .models import ScanEvent
+        from .models import ScanEvent, PingResult as PingResultModel
         cutoff = now - timedelta(days=7)
         pruned = ScanEvent.objects.filter(created_at__lt=cutoff).delete()[0]
         if pruned:
             print(f'[Dispatcher] Pruned {pruned} old scan event(s)', flush=True)
+
+        # Expire "New" badges
+        new_days = settings.new_ip_days_threshold
+        if new_days > 0:
+            expiry_cutoff = now - timedelta(days=new_days)
+            expired_new = PingResultModel.objects.filter(
+                is_new=True, discovered_at__lt=expiry_cutoff,
+            ).update(is_new=False)
+            if expired_new:
+                print(f'[Dispatcher] Expired "New" badge on {expired_new} IP(s)', flush=True)
+        elif new_days == 0:
+            cleared = PingResultModel.objects.filter(is_new=True).update(is_new=False)
+            if cleared:
+                print(f'[Dispatcher] Cleared {cleared} "New" badge(s) (feature disabled)', flush=True)
 
         print('[Dispatcher] Done', flush=True)
 

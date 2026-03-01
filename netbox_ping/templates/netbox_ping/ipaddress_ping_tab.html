@@ -23,11 +23,14 @@
               {% if ping_result.is_skipped %}
                 <span class="badge text-bg-warning">Skipped</span>
               {% elif ping_result.is_stale %}
-                <span class="badge text-bg-warning">Stale</span>
+                <span class="badge" style="background-color:#e67e22;color:#fff;">Stale</span>
               {% elif ping_result.is_reachable %}
                 <span class="badge text-bg-success">Up</span>
               {% else %}
                 <span class="badge text-bg-danger">Down</span>
+              {% endif %}
+              {% if ping_result.is_new %}
+                <span class="badge text-bg-info">New</span>
               {% endif %}
             </td>
           </tr>

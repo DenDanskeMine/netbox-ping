@@ -139,6 +139,37 @@
     </div>
   </div>
 
+  {# ── New IP Badge ── #}
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <h5 class="card-header">
+          <span class="mdi mdi-new-box"></span> New IP Badge
+        </h5>
+        <div class="card-body">
+          {% for field in form %}
+            {% if field.name == 'new_ip_days_threshold' %}
+            <div class="mb-3">
+              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}
+              <div class="form-text text-muted">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+              <div class="text-danger">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          {% endfor %}
+          <div class="form-text text-muted">
+            Auto-discovered IPs will show a <span class="badge text-bg-info">New</span> badge
+            for this many days after discovery. Set to 0 to disable.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {# ── Email Notifications ── #}
   <div class="row mb-4">
     <div class="col-12">

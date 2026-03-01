@@ -429,12 +429,14 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     down = tracked - up - skipped - removed
 
     # Count stale IPs (remaining after removal)
+    remaining_ip_pks = [ip.pk for ip in ip_addresses if ip.pk not in ips_to_remove] if ips_to_remove else [ip.pk for ip in ip_addresses]
     stale_count = PingResult.objects.filter(
-        ip_address__in=[ip.pk for ip in ip_addresses],
+        ip_address__in=remaining_ip_pks,
         is_stale=True,
-    ).count() if not ips_to_remove else PingResult.objects.filter(
-        ip_address__in=[ip.pk for ip in ip_addresses if ip.pk not in ips_to_remove],
-        is_stale=True,
+    ).count()
+    new_count = PingResult.objects.filter(
+        ip_address__in=remaining_ip_pks,
+        is_new=True,
     ).count()
 
     SubnetScanResult.objects.update_or_create(
@@ -445,6 +447,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
             'hosts_down': down,
             'hosts_skipped': skipped,
             'hosts_stale': stale_count,
+            'hosts_new': new_count,
             'last_scanned': timezone.now(),
         },
     )
@@ -537,6 +540,8 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
                         dns_name=dns_name,
                         last_checked=now,
                         last_seen=now,
+                        is_new=True,
+                        discovered_at=now,
                     )
                     PingHistory.objects.create(
                         ip_address=ip_obj,
@@ -566,12 +571,17 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
                 except Exception as e:
                     logger.error(f'Failed to create IP {ip_str}: {e}')
 
+    new_count = PingResult.objects.filter(
+        ip_address__in=list(prefix_obj.get_child_ips().values_list('pk', flat=True)),
+        is_new=True,
+    ).count()
     SubnetScanResult.objects.update_or_create(
         prefix=prefix_obj,
         defaults={
             'total_hosts': len(hosts),
             'hosts_up': total_up,
             'hosts_down': len(hosts) - total_up,
+            'hosts_new': new_count,
             'last_discovered': timezone.now(),
         },
     )
