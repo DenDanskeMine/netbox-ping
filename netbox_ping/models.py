@@ -156,6 +156,18 @@ class SubnetScanResult(NetBoxModel):
         null=True,
         verbose_name='Last Discovered',
     )
+    next_scan_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Next Scan At',
+        help_text='When this prefix is next scheduled to be auto-scanned',
+    )
+    next_discover_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Next Discover At',
+        help_text='When this prefix is next scheduled to be auto-discovered',
+    )
 
     class Meta:
         ordering = ['-last_scanned']
@@ -389,6 +401,12 @@ class PluginSettings(models.Model):
         blank=True,
         null=True,
         verbose_name='Last Digest Sent',
+    )
+    next_digest_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Next Digest At',
+        help_text='When the next email digest is scheduled to be sent',
     )
 
     # ── Stale IP Detection ──

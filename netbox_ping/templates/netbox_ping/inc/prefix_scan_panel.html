@@ -28,8 +28,28 @@
         <td>{{ scan_result.last_scanned|default:"Never" }}</td>
       </tr>
       <tr>
+        <th scope="row">Next Scan</th>
+        <td>
+          {% if scan_result.next_scan_at %}
+            <span class="badge text-bg-primary">in {{ scan_result.next_scan_at|timeuntil }}</span>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
         <th scope="row">Last Discovered</th>
         <td>{{ scan_result.last_discovered|default:"Never" }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Next Discover</th>
+        <td>
+          {% if scan_result.next_discover_at %}
+            <span class="badge text-bg-primary">in {{ scan_result.next_discover_at|timeuntil }}</span>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
       </tr>
     </table>
     {% else %}

@@ -139,6 +139,8 @@ class SubnetScanResultTable(NetBoxTable):
     hosts_new = tables.Column(verbose_name='Hosts New')
     last_scanned = tables.DateTimeColumn(verbose_name='Last Scanned')
     last_discovered = tables.DateTimeColumn(verbose_name='Last Discovered')
+    next_scan_at = tables.DateTimeColumn(verbose_name='Next Scan')
+    next_discover_at = tables.DateTimeColumn(verbose_name='Next Discover')
     actions = columns.ActionsColumn(
         actions=('delete',),
     )
@@ -147,10 +149,12 @@ class SubnetScanResultTable(NetBoxTable):
         model = SubnetScanResult
         fields = (
             'pk', 'id', 'prefix', 'total_hosts', 'hosts_up',
-            'hosts_down', 'hosts_skipped', 'hosts_stale', 'hosts_new', 'last_scanned', 'last_discovered', 'actions',
+            'hosts_down', 'hosts_skipped', 'hosts_stale', 'hosts_new',
+            'last_scanned', 'next_scan_at', 'last_discovered', 'next_discover_at', 'actions',
         )
         default_columns = (
-            'prefix', 'total_hosts', 'hosts_up', 'hosts_down', 'hosts_skipped', 'hosts_stale', 'hosts_new', 'last_scanned',
+            'prefix', 'total_hosts', 'hosts_up', 'hosts_down',
+            'hosts_stale', 'hosts_new', 'last_scanned', 'next_scan_at',
         )
 
 
