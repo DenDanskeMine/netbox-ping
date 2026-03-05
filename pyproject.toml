@@ -25,10 +25,21 @@ dependencies = [
     "dnspython>=2.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.8",
+]
+
 [project.urls]
 Homepage = "https://github.com/DenDanskeMine/netbox-ping"
 Repository = "https://github.com/DenDanskeMine/netbox-ping"
 Issues = "https://github.com/DenDanskeMine/netbox-ping/issues"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["netbox_ping*"]
