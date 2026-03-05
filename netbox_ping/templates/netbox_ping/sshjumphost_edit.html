@@ -1,0 +1,56 @@
+{% extends 'base/layout.html' %}
+{% load helpers %}
+
+{% block title %}{% if object %}Edit SSH Jumphost: {{ object.name }}{% else %}Add SSH Jumphost{% endif %}{% endblock %}
+
+{% block header %}
+  <h1>{% if object %}Edit SSH Jumphost: {{ object.name }}{% else %}Add SSH Jumphost{% endif %}</h1>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          {% for field in form %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+            <div class="form-text text-muted">{{ field.help_text }}</div>
+            {% endif %}
+            {% for error in field.errors %}
+            <div class="text-danger">{{ error }}</div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+          <div class="text-end">
+            <a href="{% url 'plugins:netbox_ping:sshjumphost_list' %}" class="btn btn-secondary me-2">
+              Cancel
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <span class="mdi mdi-content-save"></span> Save
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <h5 class="card-header">
+        <span class="mdi mdi-information-outline"></span> Notes
+      </h5>
+      <div class="card-body">
+        <ul class="mb-0 small text-muted">
+          <li><strong>Key File</strong> — absolute path to the private key on the server running NetBox (e.g. <code>/opt/netbox/.ssh/id_ed25519</code>)</li>
+          <li><strong>Known Hosts File</strong> — leave blank to skip host key verification (useful for first-time setup; not recommended for production)</li>
+          <li>The NetBox RQ worker process must have read access to the key file</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

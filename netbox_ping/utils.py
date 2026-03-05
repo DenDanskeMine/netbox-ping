@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import socket
 import subprocess
@@ -13,16 +14,61 @@ from django.utils import timezone
 logger = logging.getLogger('netbox.netbox_ping')
 
 
-def ping_host(ip, count=1, timeout=1):
+def _start_ssh_master(jumphost, socket_path):
+    """Establish SSH ControlMaster. Raises subprocess.CalledProcessError on failure."""
+    cmd = [
+        'ssh', '-M', '-N', '-f',
+        '-S', socket_path,
+        '-p', str(jumphost.port),
+        '-i', jumphost.key_file,
+        '-o', 'ControlPersist=120',
+        '-o', 'ConnectTimeout=10',
+        '-o', 'BatchMode=yes',
+    ]
+    if jumphost.known_hosts_file:
+        cmd += ['-o', 'StrictHostKeyChecking=yes',
+                '-o', f'UserKnownHostsFile={jumphost.known_hosts_file}']
+    else:
+        cmd += ['-o', 'StrictHostKeyChecking=no',
+                '-o', 'UserKnownHostsFile=/dev/null']
+    cmd.append(f'{jumphost.username}@{jumphost.host}')
+    subprocess.run(cmd, check=True, timeout=15, capture_output=True)
+
+
+def _stop_ssh_master(jumphost, socket_path):
+    """Tear down ControlMaster. Silent on errors."""
+    try:
+        subprocess.run(
+            ['ssh', '-S', socket_path, '-O', 'exit',
+             f'{jumphost.username}@{jumphost.host}'],
+            timeout=5, capture_output=True,
+        )
+    except Exception:
+        pass
+    try:
+        os.unlink(socket_path)
+    except Exception:
+        pass
+
+
+def ping_host(ip, count=1, timeout=1, ssh_socket=None, ssh_target=None):
     """
     Ping a single IP address.
 
+    If ssh_socket + ssh_target are provided, runs ping via SSH ControlMaster.
     Returns dict with 'is_reachable' (bool) and 'response_time_ms' (float or None).
     """
     try:
+        if ssh_socket and ssh_target:
+            cmd = ['ssh', '-S', ssh_socket, '-o', 'BatchMode=yes',
+                   ssh_target, f'ping -c {count} -W {timeout} {ip}']
+            proc_timeout = timeout + 10
+        else:
+            cmd = ['ping', '-c', str(count), '-W', str(timeout), str(ip)]
+            proc_timeout = timeout + 2
         result = subprocess.run(
-            ['ping', '-c', str(count), '-W', str(timeout), str(ip)],
-            capture_output=True, text=True, timeout=timeout + 2,
+            cmd,
+            capture_output=True, text=True, timeout=proc_timeout,
         )
         is_reachable = result.returncode == 0
         rtt = None
@@ -84,7 +130,7 @@ def _compute_dns_sync(dns_name, is_reachable, dns_attempted, current_netbox_dns,
     return False, ''
 
 
-def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, skip_reserved=False):
+def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, skip_reserved=False, stale_check=True, jumphost=None, fallback_to_local=True):
     """
     Ping all existing IPs in a prefix. Creates/updates PingResult and SubnetScanResult.
 
@@ -111,10 +157,30 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         log.info(msg)
         print(f'[Scan] {msg}', flush=True)
 
+    # SSH ControlMaster setup
+    ssh_socket = None
+    ssh_target = None
+    socket_path = None
+    if jumphost:
+        socket_path = f'/tmp/netbox-ping-{jumphost.pk}-{os.getpid()}.sock'
+        try:
+            _start_ssh_master(jumphost, socket_path)
+            ssh_socket = socket_path
+            ssh_target = f'{jumphost.username}@{jumphost.host}'
+            msg = f'SSH master to {jumphost.host} established'
+            log.info(msg)
+            print(f'[Scan] {msg}', flush=True)
+        except Exception as e:
+            if fallback_to_local:
+                log.warning(f'SSH master to {jumphost.host} failed, falling back to local: {e}')
+                print(f'[Scan] SSH master failed, using local ping', flush=True)
+            else:
+                raise
+
     # Phase 1: ping + DNS in parallel (no DB access)
     def _ping_ip(ip_obj):
         ip_str = str(ip_obj.address.ip)
-        ping_data = ping_host(ip_str, timeout=ping_timeout)
+        ping_data = ping_host(ip_str, timeout=ping_timeout, ssh_socket=ssh_socket, ssh_target=ssh_target)
         dns_name = ''
         dns_attempted = False
         if perform_dns and ping_data['is_reachable']:
@@ -311,11 +377,11 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         log.info(msg)
         print(f'[Scan] {msg}', flush=True)
 
-    # Phase 4: Stale IP detection
+    # Phase 4: Stale IP detection — skipped for manual scans
     from .models import PrefixSchedule
     stale_settings = dns_settings  # reuse the PluginSettings object passed in
-    stale_excluded = False
-    if stale_settings:
+    stale_excluded = not stale_check  # manual scans always skip stale logic
+    if stale_settings and not stale_excluded:
         try:
             prefix_schedule = PrefixSchedule.objects.get(prefix=prefix_obj)
             if prefix_schedule.stale_mode == 'exclude':
@@ -408,8 +474,9 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
                     ScanEvent.objects.bulk_create(stale_events[i:i + BATCH])
                 stale_events = []  # already saved
                 from ipam.models import IPAddress as IPAddressModel
-                deleted_count = IPAddressModel.objects.filter(pk__in=ips_to_remove).delete()[0]
-                msg = f'Auto-removed {deleted_count} stale IP(s) from NetBox'
+                ip_count = len(ips_to_remove)
+                IPAddressModel.objects.filter(pk__in=ips_to_remove).delete()
+                msg = f'Auto-removed {ip_count} stale IP(s) from NetBox'
                 log.info(msg)
                 print(f'[Scan] {msg}', flush=True)
 
@@ -460,10 +527,13 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     if ips_to_remove:
         state_changes['ip_removed_stale'] = len(ips_to_remove)
 
+    if ssh_socket and jumphost and socket_path:
+        _stop_ssh_master(jumphost, socket_path)
+
     return {'total': tracked, 'up': up, 'down': down, 'skipped': skipped, 'stale': stale_count, 'removed': removed, 'state_changes': state_changes}
 
 
-def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None):
+def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, jumphost=None, fallback_to_local=True):
     """
     Ping entire network range to discover new hosts not yet in NetBox.
     Creates new IPAddress + PingResult for any discovered hosts.
@@ -492,9 +562,29 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
         str(ip.address.ip) for ip in prefix_obj.get_child_ips()
     )
 
+    # SSH ControlMaster setup
+    ssh_socket = None
+    ssh_target = None
+    socket_path = None
+    if jumphost:
+        socket_path = f'/tmp/netbox-ping-disc-{jumphost.pk}-{os.getpid()}.sock'
+        try:
+            _start_ssh_master(jumphost, socket_path)
+            ssh_socket = socket_path
+            ssh_target = f'{jumphost.username}@{jumphost.host}'
+            msg = f'SSH master to {jumphost.host} established'
+            log.info(msg)
+            print(f'[Discover] {msg}', flush=True)
+        except Exception as e:
+            if fallback_to_local:
+                log.warning(f'SSH master to {jumphost.host} failed, falling back to local: {e}')
+                print(f'[Discover] SSH master failed, using local ping', flush=True)
+            else:
+                raise
+
     # Phase 1: ping in parallel (no DB access)
     def _check_host(host_ip):
-        return str(host_ip), ping_host(str(host_ip), timeout=ping_timeout)
+        return str(host_ip), ping_host(str(host_ip), timeout=ping_timeout, ssh_socket=ssh_socket, ssh_target=ssh_target)
 
     ping_results = []
     total_hosts = len(hosts)
@@ -585,5 +675,8 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
             'last_discovered': timezone.now(),
         },
     )
+
+    if ssh_socket and jumphost and socket_path:
+        _stop_ssh_master(jumphost, socket_path)
 
     return {'discovered': discovered, 'total_scanned': len(hosts), 'total_up': total_up}

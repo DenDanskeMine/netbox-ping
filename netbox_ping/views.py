@@ -9,10 +9,10 @@ from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
 from ipam.models import Prefix, IPAddress
 
-from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, DnsHistory
+from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, DnsHistory, SSHJumpHost
 from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable, DnsHistoryTable
 from .filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet
-from .forms import PingResultFilterForm, PingHistoryFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm
+from .forms import PingResultFilterForm, PingHistoryFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm, SSHJumpHostForm
 
 logger = logging.getLogger('netbox.netbox_ping')
 
@@ -171,10 +171,11 @@ class PrefixScanActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request, pk):
-        from .jobs import PrefixScanJob
+        from .jobs import PrefixScanJob, _label_job
 
         prefix = get_object_or_404(Prefix, pk=pk)
-        PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
+        job = PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk, 'manual': True}, job_timeout=1800)
+        _label_job(job, f'Prefix Scan: {prefix.prefix}')
         messages.info(request, f'Scan job enqueued for {prefix.prefix}')
         return redirect(prefix.get_absolute_url() + 'ping/')
 
@@ -184,10 +185,11 @@ class PrefixDiscoverActionView(LoginRequiredMixin, PermissionRequiredMixin, View
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request, pk):
-        from .jobs import PrefixDiscoverJob
+        from .jobs import PrefixDiscoverJob, _label_job
 
         prefix = get_object_or_404(Prefix, pk=pk)
-        PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
+        job = PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
+        _label_job(job, f'Prefix Discover: {prefix.prefix}')
         messages.info(request, f'Discover job enqueued for {prefix.prefix}')
         return redirect(prefix.get_absolute_url() + 'ping/')
 
@@ -207,7 +209,9 @@ class BulkPrefixScanView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         count = 0
         for prefix in prefixes:
-            PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
+            from .jobs import PrefixScanJob, _label_job
+            job = PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk, 'manual': True}, job_timeout=1800)
+            _label_job(job, f'Prefix Scan: {prefix.prefix}')
             count += 1
 
         messages.info(
@@ -232,7 +236,9 @@ class BulkPrefixDiscoverView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         count = 0
         for prefix in prefixes:
-            PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
+            from .jobs import PrefixDiscoverJob, _label_job
+            job = PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk}, job_timeout=1800)
+            _label_job(job, f'Prefix Discover: {prefix.prefix}')
             count += 1
 
         messages.info(
@@ -350,6 +356,7 @@ class PluginSettingsEditView(LoginRequiredMixin, PermissionRequiredMixin, View):
             'form': form,
             'settings': settings,
             'schedule_data': schedule_data,
+            'jumphosts': SSHJumpHost.objects.all(),
         }
 
     def get(self, request):
@@ -421,6 +428,75 @@ class SendTestEmailView(LoginRequiredMixin, PermissionRequiredMixin, View):
             messages.error(request, f'Failed to send test email: {e}')
 
         return redirect('plugins:netbox_ping:settings')
+
+
+# ─── SSH Jumphost CRUD Views ────────────────────────────────────
+
+class SSHJumpHostListView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """List all SSH jumphosts."""
+    permission_required = 'netbox_ping.view_pingresult'
+
+    def get(self, request):
+        jumphosts = SSHJumpHost.objects.all()
+        return render(request, 'netbox_ping/sshjumphost_list.html', {'jumphosts': jumphosts})
+
+
+class SSHJumpHostCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Create a new SSH jumphost."""
+    permission_required = 'netbox_ping.view_pingresult'
+
+    def get(self, request):
+        form = SSHJumpHostForm()
+        return render(request, 'netbox_ping/sshjumphost_edit.html', {'form': form})
+
+    def post(self, request):
+        form = SSHJumpHostForm(request.POST)
+        if form.is_valid():
+            jumphost = form.save()
+            messages.success(request, f'SSH Jumphost "{jumphost.name}" created.')
+            return redirect('plugins:netbox_ping:sshjumphost_list')
+        return render(request, 'netbox_ping/sshjumphost_edit.html', {'form': form})
+
+
+class SSHJumpHostEditView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Edit an existing SSH jumphost."""
+    permission_required = 'netbox_ping.view_pingresult'
+
+    def get(self, request, pk):
+        jumphost = get_object_or_404(SSHJumpHost, pk=pk)
+        form = SSHJumpHostForm(instance=jumphost)
+        return render(request, 'netbox_ping/sshjumphost_edit.html', {'form': form, 'object': jumphost})
+
+    def post(self, request, pk):
+        jumphost = get_object_or_404(SSHJumpHost, pk=pk)
+        form = SSHJumpHostForm(request.POST, instance=jumphost)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'SSH Jumphost "{jumphost.name}" updated.')
+            return redirect('plugins:netbox_ping:sshjumphost_list')
+        return render(request, 'netbox_ping/sshjumphost_edit.html', {'form': form, 'object': jumphost})
+
+
+class SSHJumpHostDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Delete an SSH jumphost."""
+    permission_required = 'netbox_ping.view_pingresult'
+
+    def get(self, request, pk):
+        jumphost = get_object_or_404(SSHJumpHost, pk=pk)
+        used_by_settings = PluginSettings.objects.filter(default_jumphost=jumphost).exists()
+        used_by_schedules = PrefixSchedule.objects.filter(custom_jumphost=jumphost).count()
+        return render(request, 'netbox_ping/sshjumphost_confirm_delete.html', {
+            'object': jumphost,
+            'used_by_settings': used_by_settings,
+            'used_by_schedules': used_by_schedules,
+        })
+
+    def post(self, request, pk):
+        jumphost = get_object_or_404(SSHJumpHost, pk=pk)
+        name = jumphost.name
+        jumphost.delete()
+        messages.success(request, f'SSH Jumphost "{name}" deleted.')
+        return redirect('plugins:netbox_ping:sshjumphost_list')
 
 
 class SendDigestNowView(LoginRequiredMixin, PermissionRequiredMixin, View):

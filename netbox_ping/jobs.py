@@ -1,12 +1,148 @@
 import logging
 from datetime import timedelta
 
-from django.db import models
 from django.utils import timezone
 from netbox.jobs import JobRunner, system_job
 from .models import PluginSettings
 
 logger = logging.getLogger('netbox.netbox_ping')
+
+
+def _resolve_jumphost(prefix, settings):
+    """
+    Returns (SSHJumpHost|None, fallback_to_local: bool).
+    None means: use local ping.
+    """
+    from .models import PrefixSchedule
+    if not settings.ssh_jumphost_enabled:
+        return None, True
+    if prefix is None:
+        return settings.default_jumphost, settings.ssh_fallback_to_local
+    schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
+    if schedule:
+        jh = schedule.get_effective_jumphost(settings)
+    else:
+        jh = settings.default_jumphost
+    return jh, settings.ssh_fallback_to_local
+
+
+def _label_job(job, name):
+    """Update a job's display name in the DB so the NetBox job list is descriptive."""
+    try:
+        from core.models import Job as CoreJob
+        CoreJob.objects.filter(pk=job.pk).update(name=name)
+    except Exception:
+        pass
+
+
+def _schedule_next_scan(prefix, settings):
+    """
+    Compute and store next_scan_at for a prefix, then enqueue a scheduled job.
+    Safe to call after any scan (manual or auto) so the countdown always resets.
+
+    Uses SubnetScanResult.scan_job_id to track the scheduled job PK instead of
+    instance=prefix (Prefix is not a JobsMixin model, so NetBox rejects instance-
+    linked jobs for it).
+    """
+    from .models import PrefixSchedule, SubnetScanResult
+    from core.models import Job as CoreJob
+
+    schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
+    if schedule:
+        enabled = schedule.is_scan_enabled(settings)
+        interval = schedule.get_effective_scan_interval(settings)
+    else:
+        enabled = settings.auto_scan_enabled
+        interval = settings.auto_scan_interval
+
+    ssr, _ = SubnetScanResult.objects.get_or_create(prefix=prefix)
+
+    if enabled and interval > 0:
+        next_at = timezone.now() + timedelta(minutes=interval)
+
+        # Cancel the previously scheduled job if still pending/scheduled
+        if ssr.scan_job_id:
+            CoreJob.objects.filter(pk=ssr.scan_job_id, status__in=['pending', 'scheduled']).delete()
+
+        job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+        _label_job(job, f'Prefix Scan: {prefix.prefix}')
+        ssr.next_scan_at = next_at
+        ssr.scan_job_id = job.pk
+        ssr.save(update_fields=['next_scan_at', 'scan_job_id'])
+        logger.debug(f'Scheduled next scan of {prefix.prefix} at {next_at}')
+    else:
+        # Auto-scan disabled — cancel existing job and clear timestamps
+        if ssr.scan_job_id:
+            CoreJob.objects.filter(pk=ssr.scan_job_id, status__in=['pending', 'scheduled']).delete()
+        ssr.next_scan_at = None
+        ssr.scan_job_id = None
+        ssr.save(update_fields=['next_scan_at', 'scan_job_id'])
+
+
+def _schedule_next_discover(prefix, settings):
+    """
+    Compute and store next_discover_at for a prefix, then enqueue a scheduled job.
+    Uses SubnetScanResult.discover_job_id for deduplication (same reason as scan).
+    """
+    from .models import PrefixSchedule, SubnetScanResult
+    from core.models import Job as CoreJob
+
+    schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
+    if schedule:
+        enabled = schedule.is_discover_enabled(settings)
+        interval = schedule.get_effective_discover_interval(settings)
+    else:
+        enabled = settings.auto_discover_enabled
+        interval = settings.auto_discover_interval
+
+    ssr, _ = SubnetScanResult.objects.get_or_create(prefix=prefix)
+
+    if enabled and interval > 0:
+        next_at = timezone.now() + timedelta(minutes=interval)
+
+        if ssr.discover_job_id:
+            CoreJob.objects.filter(pk=ssr.discover_job_id, status__in=['pending', 'scheduled']).delete()
+
+        job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+        _label_job(job, f'Prefix Discover: {prefix.prefix}')
+        ssr.next_discover_at = next_at
+        ssr.discover_job_id = job.pk
+        ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
+        logger.debug(f'Scheduled next discover of {prefix.prefix} at {next_at}')
+    else:
+        if ssr.discover_job_id:
+            CoreJob.objects.filter(pk=ssr.discover_job_id, status__in=['pending', 'scheduled']).delete()
+        ssr.next_discover_at = None
+        ssr.discover_job_id = None
+        ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
+
+
+def _schedule_next_digest(settings):
+    """
+    Compute next_digest_at and enqueue an EmailDigestJob if email is enabled.
+    Cancels any existing scheduled digest job if email is disabled.
+    """
+    if not settings.email_notifications_enabled or settings.email_digest_interval <= 0:
+        # Use queryset update (not instance.save) to avoid triggering post_save
+        # signal on PluginSettings which would cause infinite recursion.
+        settings.__class__.objects.filter(pk=settings.pk).update(next_digest_at=None)
+        _cancel_scheduled_digest_jobs()
+        return
+
+    next_at = timezone.now() + timedelta(minutes=settings.email_digest_interval)
+    settings.__class__.objects.filter(pk=settings.pk).update(next_digest_at=next_at)
+    EmailDigestJob.enqueue_once(schedule_at=next_at)
+    logger.debug(f'Scheduled next email digest at {next_at}')
+
+
+def _cancel_scheduled_digest_jobs():
+    """Cancel any pending/scheduled EmailDigestJob entries."""
+    try:
+        EmailDigestJob.get_jobs().filter(
+            status__in=['pending', 'scheduled']
+        ).delete()
+    except Exception:
+        pass
 
 
 class PrefixScanJob(JobRunner):
@@ -18,9 +154,26 @@ class PrefixScanJob(JobRunner):
     def run(self, data=None, **kwargs):
         from ipam.models import Prefix
         from .utils import scan_prefix
+        from .models import SubnetScanResult
 
         prefix = Prefix.objects.get(pk=data['prefix_id'])
+        _label_job(self.job, f'Prefix Scan: {prefix.prefix}')
+        is_manual = bool(data.get('manual', False))
+
+        # Deduplication guard: CoreJob.delete() removes the DB record but NOT the
+        # Redis entry, so "cancelled" jobs keep running. If this job's PK no longer
+        # matches the tracked scan_job_id it's a phantom — discard it immediately.
+        if not is_manual:
+            ssr_check = SubnetScanResult.objects.filter(prefix=prefix).only('scan_job_id').first()
+            if ssr_check and ssr_check.scan_job_id and ssr_check.scan_job_id != self.job.pk:
+                self.logger.info(
+                    f'Discarding superseded scan of {prefix.prefix} '
+                    f'(this={self.job.pk}, active={ssr_check.scan_job_id})'
+                )
+                return
+
         settings = PluginSettings.load()
+        jumphost, fallback = _resolve_jumphost(prefix, settings)
 
         self.logger.info(f'Starting scan of prefix {prefix.prefix}')
         print(f'[Prefix Scan] Starting scan of {prefix.prefix}', flush=True)
@@ -33,10 +186,16 @@ class PrefixScanJob(JobRunner):
             dns_settings=settings,
             job_logger=self.logger,
             skip_reserved=settings.skip_reserved_ips,
+            stale_check=not is_manual,
+            jumphost=jumphost,
+            fallback_to_local=fallback,
         )
         skipped_str = f', {result["skipped"]} skipped' if result.get('skipped') else ''
         self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up{skipped_str}')
         print(f'[Prefix Scan] Complete: {result["up"]}/{result["total"]} hosts up{skipped_str}', flush=True)
+
+        # Schedule the next scan (resets countdown whether triggered manually or auto)
+        _schedule_next_scan(prefix, settings)
 
 
 class PrefixDiscoverJob(JobRunner):
@@ -48,9 +207,22 @@ class PrefixDiscoverJob(JobRunner):
     def run(self, data=None, **kwargs):
         from ipam.models import Prefix
         from .utils import discover_prefix
+        from .models import SubnetScanResult
 
         prefix = Prefix.objects.get(pk=data['prefix_id'])
+        _label_job(self.job, f'Prefix Discover: {prefix.prefix}')
+
+        # Deduplication guard: same reason as PrefixScanJob
+        ssr_check = SubnetScanResult.objects.filter(prefix=prefix).only('discover_job_id').first()
+        if ssr_check and ssr_check.discover_job_id and ssr_check.discover_job_id != self.job.pk:
+            self.logger.info(
+                f'Discarding superseded discover of {prefix.prefix} '
+                f'(this={self.job.pk}, active={ssr_check.discover_job_id})'
+            )
+            return
+
         settings = PluginSettings.load()
+        jumphost, fallback = _resolve_jumphost(prefix, settings)
 
         self.logger.info(f'Starting discovery of prefix {prefix.prefix}')
         print(f'[Prefix Discover] Starting discovery of {prefix.prefix}', flush=True)
@@ -62,6 +234,8 @@ class PrefixDiscoverJob(JobRunner):
             ping_timeout=settings.ping_timeout,
             dns_settings=settings,
             job_logger=self.logger,
+            jumphost=jumphost,
+            fallback_to_local=fallback,
         )
         self.logger.info(
             f'Discovery complete: found {len(result["discovered"])} new IPs '
@@ -71,6 +245,9 @@ class PrefixDiscoverJob(JobRunner):
             f'[Prefix Discover] Complete: {len(result["discovered"])} new IPs '
             f'out of {result["total_scanned"]} scanned', flush=True
         )
+
+        # Schedule the next discovery
+        _schedule_next_discover(prefix, settings)
 
 
 class SingleIPPingJob(JobRunner):
@@ -84,14 +261,46 @@ class SingleIPPingJob(JobRunner):
         from .utils import ping_host, resolve_dns, _compute_dns_sync
         from .models import PingResult, PingHistory, DnsHistory, ScanEvent
 
+        from ipam.models import Prefix
+
         ip_obj = self.job.object
         ip_str = str(ip_obj.address.ip)
         settings = PluginSettings.load()
         dns_servers = settings.get_dns_servers()
 
+        # Resolve jumphost: find the most specific containing prefix for this IP
+        parent_prefix = Prefix.objects.filter(
+            prefix__net_contains_or_equals=str(ip_obj.address.ip),
+            vrf=ip_obj.vrf,
+        ).order_by('-prefix__prefixlen').first()
+        jumphost, fallback = _resolve_jumphost(parent_prefix, settings)
+
         self.logger.info(f'Pinging {ip_str}')
 
-        ping_data = ping_host(ip_str)
+        from .utils import _start_ssh_master, _stop_ssh_master
+
+        ssh_socket = None
+        ssh_target = None
+        socket_path = None
+        if jumphost:
+            socket_path = f'/tmp/netbox-ping-single-{jumphost.pk}-{ip_obj.pk}.sock'
+            try:
+                _start_ssh_master(jumphost, socket_path)
+                ssh_socket = socket_path
+                ssh_target = f'{jumphost.username}@{jumphost.host}'
+                self.logger.info(f'SSH master to {jumphost.host} established')
+            except Exception as e:
+                if fallback:
+                    self.logger.warning(f'SSH master to {jumphost.host} failed, falling back to local: {e}')
+                else:
+                    raise
+
+        try:
+            ping_data = ping_host(ip_str, ssh_socket=ssh_socket, ssh_target=ssh_target)
+        finally:
+            if ssh_socket and jumphost and socket_path:
+                _stop_ssh_master(jumphost, socket_path)
+
         dns_name = ''
         dns_attempted = False
         if settings.perform_dns_lookup and ping_data['is_reachable']:
@@ -177,37 +386,30 @@ class SingleIPPingJob(JobRunner):
         self.logger.info(f'{ip_str} is {status}')
 
 
-@system_job(interval=1)
-class AutoScanDispatcherJob(JobRunner):
+@system_job(interval=1440)
+class ScheduleRecoveryJob(JobRunner):
     """
-    System job that runs every minute. Checks which prefixes are due
-    for scanning or discovery and enqueues background jobs for them.
+    Runs daily. Lightweight recovery job that re-enqueues any scheduled
+    scans/discoveries that were lost (e.g. Redis restart without persistence).
+    Also bootstraps scheduling for newly enabled prefixes.
+
+    Under normal operation this does very little — the real scheduling is
+    driven by PrefixScanJob/PrefixDiscoverJob self-rescheduling at the end
+    of each run, and by Django signals when settings change.
+    On every netbox-rq startup, enqueue_once already runs recovery for free.
     """
 
     class Meta:
-        name = 'Auto-Scan Dispatcher'
+        name = 'Schedule Recovery'
 
     def run(self, *args, **kwargs):
         from ipam.models import Prefix
         from .models import PrefixSchedule, SubnetScanResult
+        from core.models import Job as CoreJob
 
         settings = PluginSettings.load()
-
-        # Quick bail: nothing globally enabled and no custom_on overrides
-        if not settings.auto_scan_enabled and not settings.auto_discover_enabled:
-            if not PrefixSchedule.objects.filter(
-                models.Q(scan_mode='custom_on') | models.Q(discover_mode='custom_on')
-            ).exists():
-                return
-
         now = timezone.now()
 
-        # Only consider prefixes at or smaller than the configured max size
-        prefixes = Prefix.objects.filter(
-            prefix__net_mask_length__gte=settings.max_prefix_size
-        )
-
-        # Bulk-load related data to avoid N+1 queries
         prefix_schedules = {
             ps.prefix_id: ps
             for ps in PrefixSchedule.objects.all()
@@ -217,63 +419,144 @@ class AutoScanDispatcherJob(JobRunner):
             for sr in SubnetScanResult.objects.all()
         }
 
-        scan_count = 0
-        discover_count = 0
+        # Only consider prefixes at or smaller than the configured max size
+        prefixes = list(Prefix.objects.filter(
+            prefix__net_mask_length__gte=settings.max_prefix_size
+        ))
+
+        recovered_scan = 0
+        recovered_discover = 0
+        bootstrapped_scan = 0
+        bootstrapped_discover = 0
 
         for prefix in prefixes:
             schedule = prefix_schedules.get(prefix.pk)
-            scan_result = scan_results.get(prefix.pk)
-            last_scanned = scan_result.last_scanned if scan_result else None
-            last_discovered = scan_result.last_discovered if scan_result else None
+            ssr = scan_results.get(prefix.pk)
 
-            # Determine effective settings for this prefix
+            # --- Effective settings for this prefix ---
             if schedule:
                 scan_enabled = schedule.is_scan_enabled(settings)
                 scan_interval = schedule.get_effective_scan_interval(settings)
                 discover_enabled = schedule.is_discover_enabled(settings)
                 discover_interval = schedule.get_effective_discover_interval(settings)
             else:
-                # No per-prefix schedule → follow global
                 scan_enabled = settings.auto_scan_enabled
                 scan_interval = settings.auto_scan_interval
                 discover_enabled = settings.auto_discover_enabled
                 discover_interval = settings.auto_discover_interval
 
-            # Enqueue scan job if due
+            # --- Helpers: check active jobs via stored PK (Prefix is not a
+            #     JobsMixin model, so instance-linked jobs are not supported) ---
+            def _has_active_scan(statuses):
+                if ssr and ssr.scan_job_id:
+                    return CoreJob.objects.filter(pk=ssr.scan_job_id, status__in=statuses).exists()
+                return False
+
+            def _has_active_discover(statuses):
+                if ssr and ssr.discover_job_id:
+                    return CoreJob.objects.filter(pk=ssr.discover_job_id, status__in=statuses).exists()
+                return False
+
+            # --- Scan recovery / bootstrap ---
             if scan_enabled and scan_interval > 0:
-                if last_scanned is None or (now - last_scanned) >= timedelta(minutes=scan_interval):
-                    try:
-                        self.logger.info(f'Enqueuing auto-scan for {prefix.prefix}')
-                        PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, job_timeout=1800)
-                        scan_count += 1
-                    except Exception as e:
-                        self.logger.error(f'Failed to enqueue auto-scan for {prefix.prefix}: {e}')
+                if ssr and ssr.next_scan_at:
+                    if ssr.next_scan_at <= now:
+                        # Overdue — re-enqueue if no active job.
+                        # Stagger jobs 30 s apart so all overdue prefixes don't
+                        # fire simultaneously and perpetuate the thundering herd.
+                        if not _has_active_scan(['pending', 'scheduled', 'running']):
+                            run_at = now + timedelta(seconds=recovered_scan * 30)
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=run_at)
+                            _label_job(job, f'Prefix Scan: {prefix.prefix}')
+                            ssr.scan_job_id = job.pk
+                            ssr.next_scan_at = run_at  # must update so next restart sees a future ts
+                            ssr.save(update_fields=['scan_job_id', 'next_scan_at'])
+                            recovered_scan += 1
+                    else:
+                        # Future — re-enqueue if job was lost (e.g. Redis wipe)
+                        if not _has_active_scan(['pending', 'scheduled']):
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=ssr.next_scan_at)
+                            _label_job(job, f'Prefix Scan: {prefix.prefix}')
+                            ssr.scan_job_id = job.pk
+                            ssr.save(update_fields=['scan_job_id'])
+                            recovered_scan += 1
+                else:
+                    # No next_scan_at yet — bootstrap for newly enabled prefixes
+                    if not _has_active_scan(['pending', 'scheduled', 'running']):
+                        next_at = now + timedelta(minutes=scan_interval)
+                        if ssr:
+                            ssr.next_scan_at = next_at
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            _label_job(job, f'Prefix Scan: {prefix.prefix}')
+                            ssr.scan_job_id = job.pk
+                            ssr.save(update_fields=['next_scan_at', 'scan_job_id'])
+                        else:
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            _label_job(job, f'Prefix Scan: {prefix.prefix}')
+                            ssr = SubnetScanResult.objects.create(
+                                prefix=prefix, next_scan_at=next_at, scan_job_id=job.pk
+                            )
+                            scan_results[prefix.pk] = ssr
+                        bootstrapped_scan += 1
 
-            # Enqueue discover job if due
+            # --- Discover recovery / bootstrap ---
             if discover_enabled and discover_interval > 0:
-                if last_discovered is None or (now - last_discovered) >= timedelta(minutes=discover_interval):
-                    try:
-                        self.logger.info(f'Enqueuing auto-discover for {prefix.prefix}')
-                        PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, job_timeout=1800)
-                        discover_count += 1
-                    except Exception as e:
-                        self.logger.error(f'Failed to enqueue auto-discover for {prefix.prefix}: {e}')
+                if ssr and ssr.next_discover_at:
+                    if ssr.next_discover_at <= now:
+                        if not _has_active_discover(['pending', 'scheduled', 'running']):
+                            run_at = now + timedelta(seconds=recovered_discover * 30)
+                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=run_at)
+                            _label_job(job, f'Prefix Discover: {prefix.prefix}')
+                            ssr.discover_job_id = job.pk
+                            ssr.next_discover_at = run_at  # update so next restart sees a future ts
+                            ssr.save(update_fields=['discover_job_id', 'next_discover_at'])
+                            recovered_discover += 1
+                    else:
+                        if not _has_active_discover(['pending', 'scheduled']):
+                            job = PrefixDiscoverJob.enqueue(
+                                data={'prefix_id': prefix.pk}, schedule_at=ssr.next_discover_at
+                            )
+                            _label_job(job, f'Prefix Discover: {prefix.prefix}')
+                            ssr.discover_job_id = job.pk
+                            ssr.save(update_fields=['discover_job_id'])
+                            recovered_discover += 1
+                else:
+                    if not _has_active_discover(['pending', 'scheduled', 'running']):
+                        next_at = now + timedelta(minutes=discover_interval)
+                        if ssr:
+                            ssr.next_discover_at = next_at
+                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            _label_job(job, f'Prefix Discover: {prefix.prefix}')
+                            ssr.discover_job_id = job.pk
+                            ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
+                        else:
+                            ssr = SubnetScanResult.objects.get_or_create(prefix=prefix)[0]
+                            ssr.next_discover_at = next_at
+                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            _label_job(job, f'Prefix Discover: {prefix.prefix}')
+                            ssr.discover_job_id = job.pk
+                            ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
+                            scan_results[prefix.pk] = ssr
+                        bootstrapped_discover += 1
 
-        if scan_count or discover_count:
-            msg = f'Dispatcher enqueued {scan_count} scan(s), {discover_count} discover(s)'
-            self.logger.info(msg)
-            print(f'[Dispatcher] {msg}', flush=True)
-        else:
-            print('[Dispatcher] No prefixes due for scanning', flush=True)
+        # --- Email digest recovery ---
+        if settings.email_notifications_enabled and settings.email_digest_interval > 0:
+            if settings.next_digest_at:
+                has_active = EmailDigestJob.get_jobs().filter(
+                    status__in=['pending', 'scheduled']
+                ).exists()
+                if not has_active:
+                    run_at = settings.next_digest_at if settings.next_digest_at > now else now
+                    EmailDigestJob.enqueue_once(schedule_at=run_at)
 
-        # Trim ping history to configured max (raw SQL to avoid ORM overhead)
+        # --- Housekeeping ---
         from .models import PingHistory
         max_records = settings.ping_history_max_records
         if max_records > 0:
             total = PingHistory.objects.count()
             if total > max_records:
                 to_delete = total - max_records
-                print(f'[Dispatcher] Trimming {to_delete} old history records', flush=True)
+                print(f'[Recovery] Trimming {to_delete} old history records', flush=True)
                 from django.db import connection
                 with connection.cursor() as cursor:
                     cursor.execute("""
@@ -285,16 +568,14 @@ class AutoScanDispatcherJob(JobRunner):
                         )
                     """, [max_records])
                     deleted = cursor.rowcount
-                print(f'[Dispatcher] Trimmed {deleted} history records', flush=True)
+                print(f'[Recovery] Trimmed {deleted} history records', flush=True)
 
-        # Prune old ScanEvent records (older than 7 days)
         from .models import ScanEvent, PingResult as PingResultModel
         cutoff = now - timedelta(days=7)
         pruned = ScanEvent.objects.filter(created_at__lt=cutoff).delete()[0]
         if pruned:
-            print(f'[Dispatcher] Pruned {pruned} old scan event(s)', flush=True)
+            print(f'[Recovery] Pruned {pruned} old scan event(s)', flush=True)
 
-        # Expire "New" badges
         new_days = settings.new_ip_days_threshold
         if new_days > 0:
             expiry_cutoff = now - timedelta(days=new_days)
@@ -302,21 +583,29 @@ class AutoScanDispatcherJob(JobRunner):
                 is_new=True, discovered_at__lt=expiry_cutoff,
             ).update(is_new=False)
             if expired_new:
-                print(f'[Dispatcher] Expired "New" badge on {expired_new} IP(s)', flush=True)
+                print(f'[Recovery] Expired "New" badge on {expired_new} IP(s)', flush=True)
         elif new_days == 0:
             cleared = PingResultModel.objects.filter(is_new=True).update(is_new=False)
             if cleared:
-                print(f'[Dispatcher] Cleared {cleared} "New" badge(s) (feature disabled)', flush=True)
+                print(f'[Recovery] Cleared {cleared} "New" badge(s) (feature disabled)', flush=True)
 
-        print('[Dispatcher] Done', flush=True)
+        total_recovered = recovered_scan + recovered_discover
+        total_bootstrapped = bootstrapped_scan + bootstrapped_discover
+        if total_recovered or total_bootstrapped:
+            msg = (
+                f'Recovered {recovered_scan} scan / {recovered_discover} discover job(s); '
+                f'bootstrapped {bootstrapped_scan} scan / {bootstrapped_discover} discover job(s)'
+            )
+            self.logger.info(msg)
+            print(f'[Recovery] {msg}', flush=True)
+
+        print('[Recovery] Done', flush=True)
 
 
-@system_job(interval=60)
 class EmailDigestJob(JobRunner):
     """
-    System job that runs every hour. Checks if a digest email is due
-    based on the configured interval, collects unsent ScanEvents,
-    and sends a summary email.
+    Sends a summary email digest. Self-schedules the next run on completion.
+    Only exists in the job list when email notifications are enabled.
     """
 
     class Meta:
@@ -341,17 +630,12 @@ class EmailDigestJob(JobRunner):
         if not recipients:
             return
 
-        # Gate 3: interval > 0 and time elapsed?
+        # Gate 3: interval > 0?
         interval = settings.email_digest_interval
         if interval <= 0:
             return
 
         now = timezone.now()
-        if settings.email_last_digest_sent:
-            next_due = settings.email_last_digest_sent + timedelta(minutes=interval)
-            if now < next_due:
-                return
-
         period_start = settings.email_last_digest_sent or (now - timedelta(minutes=interval))
         period_end = now
 
@@ -372,21 +656,22 @@ class EmailDigestJob(JobRunner):
 
         # Gate 4: skip if no changes and on_change_only
         if settings.email_on_change_only and not events and not high_util:
-            # Still update timestamp so we don't re-check old window
-            settings.email_last_digest_sent = now
-            settings.save(update_fields=['email_last_digest_sent'])
+            settings.__class__.objects.filter(pk=settings.pk).update(email_last_digest_sent=now)
+            _schedule_next_digest(settings)
             return
 
-        # Build email
+        # Build and send email
         subject, html_body, text_body = build_digest_email(
             events, high_util, settings.email_include_details,
             period_start, period_end, threshold,
         )
 
-        # Send
         try:
             from django.conf import settings as django_settings
-            from_email = getattr(django_settings, 'SERVER_EMAIL', None) or getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'netbox@localhost')
+            from_email = (
+                getattr(django_settings, 'SERVER_EMAIL', None)
+                or getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'netbox@localhost')
+            )
             send_mail(
                 subject=subject,
                 message=text_body,
@@ -399,14 +684,11 @@ class EmailDigestJob(JobRunner):
             self.logger.info(msg)
             print(f'[Email Digest] {msg}', flush=True)
 
-            # Mark events as sent
             if events:
                 event_ids = [e.pk for e in events]
                 ScanEvent.objects.filter(pk__in=event_ids).update(digest_sent=True)
 
-            # Update timestamp
-            settings.email_last_digest_sent = now
-            settings.save(update_fields=['email_last_digest_sent'])
+            settings.__class__.objects.filter(pk=settings.pk).update(email_last_digest_sent=now)
 
             # Prune sent events older than 7 days
             cutoff = now - timedelta(days=7)
@@ -417,3 +699,6 @@ class EmailDigestJob(JobRunner):
         except Exception as e:
             self.logger.error(f'Failed to send digest email: {e}')
             print(f'[Email Digest] ERROR: {e}', flush=True)
+        finally:
+            # Always schedule the next digest (even on failure) so it doesn't stall
+            _schedule_next_digest(settings)

@@ -1,137 +1,279 @@
 {% extends 'base/layout.html' %}
 {% load helpers %}
 
-{% block title %}NetBox Ping Settings{% endblock %}
+{% block title %}NetBox Ping — Settings{% endblock %}
 
 {% block header %}
-  <h1>NetBox Ping Settings</h1>
+<div class="d-flex justify-content-between align-items-center">
+  <h1><span class="mdi mdi-cog-outline"></span> NetBox Ping Settings</h1>
+  <button type="submit" form="settings-form" class="btn btn-primary">
+    <span class="mdi mdi-content-save"></span> Save Settings
+  </button>
+</div>
 {% endblock %}
 
 {% block content %}
-<form method="post">
+
+{# ── Page-level context banner ── #}
+<div class="alert alert-light border d-flex align-items-start gap-3 mb-4 py-2">
+  <span class="mdi mdi-information-outline text-muted mt-1 flex-shrink-0"></span>
+  <div class="small text-muted">
+    <strong class="text-body">Site-wide defaults.</strong>
+    These settings apply to all prefixes unless overridden.
+    Scheduled scanning, stale detection, and ping routing can each be customised
+    per-prefix from the prefix's <strong>Ping Status</strong> tab.
+  </div>
+</div>
+
+<form method="post" id="settings-form">
   {% csrf_token %}
 
-  <div class="row mb-4">
-    {# ── DNS Configuration ── #}
+  {# ── Row 1: Scheduling + Ping Performance ── #}
+  <div class="row g-4 mb-4">
+
     <div class="col-md-6">
       <div class="card h-100">
         <h5 class="card-header">
-          <span class="mdi mdi-dns"></span> DNS Configuration
+          <span class="mdi mdi-clock-outline"></span> Scheduled Scanning
         </h5>
         <div class="card-body">
-          {% for field in form %}
-            {% if field.name in 'dns_server1,dns_server2,dns_server3,perform_dns_lookup' %}
-            <div class="mb-3">
-              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-              {{ field }}
-              {% if field.help_text %}
-              <div class="form-text text-muted">{{ field.help_text }}</div>
-              {% endif %}
-              {% for error in field.errors %}
-              <div class="text-danger">{{ error }}</div>
-              {% endfor %}
-            </div>
-            {% endif %}
-          {% endfor %}
-          <hr>
-          <h6 class="text-muted mb-3">
-            <span class="mdi mdi-sync"></span> DNS Sync to NetBox
+          <p class="text-muted small mb-3">
+            Default schedule for all prefixes.
+            Individual prefixes can override these intervals — or disable scanning entirely — from their <strong>Ping Status</strong> tab.
+          </p>
+
+          <h6 class="text-muted border-bottom pb-1 mb-3">
+            <span class="mdi mdi-lan-check"></span> Ping Existing IPs
           </h6>
-          {% for field in form %}
-            {% if field.name in 'dns_sync_to_netbox,dns_clear_on_missing,dns_preserve_if_alive' %}
-            <div class="mb-3">
-              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-              {{ field }}
-              {% if field.help_text %}
-              <div class="form-text text-muted">{{ field.help_text }}</div>
-              {% endif %}
-              {% for error in field.errors %}
-              <div class="text-danger">{{ error }}</div>
-              {% endfor %}
-            </div>
-            {% endif %}
-          {% endfor %}
+          {% for field in form %}{% if field.name in 'auto_scan_enabled,auto_scan_interval' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
+
+          <h6 class="text-muted border-bottom pb-1 mb-3 mt-4">
+            <span class="mdi mdi-magnify-scan"></span> Discover New IPs
+          </h6>
+          {% for field in form %}{% if field.name in 'auto_discover_enabled,auto_discover_interval,max_prefix_size' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
         </div>
       </div>
     </div>
 
-    {# ── Auto-Scan Configuration ── #}
     <div class="col-md-6">
       <div class="card h-100">
         <h5 class="card-header">
-          <span class="mdi mdi-clock-outline"></span> Auto-Scan Configuration
+          <span class="mdi mdi-tune"></span> Ping Performance
         </h5>
         <div class="card-body">
-          {% for field in form %}
-            {% if field.name in 'auto_scan_enabled,auto_scan_interval,auto_discover_enabled,auto_discover_interval,max_prefix_size,ping_history_max_records,ping_concurrency,ping_timeout,skip_reserved_ips' %}
-            <div class="mb-3">
-              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-              {{ field }}
-              {% if field.help_text %}
-              <div class="form-text text-muted">{{ field.help_text }}</div>
-              {% endif %}
-              {% for error in field.errors %}
-              <div class="text-danger">{{ error }}</div>
-              {% endfor %}
-            </div>
-            {% endif %}
-          {% endfor %}
+          <p class="text-muted small mb-3">
+            Control concurrency, timeout, and what to do with reserved IPs.
+            Raise concurrency if your system supports many open file handles.
+          </p>
+          {% for field in form %}{% if field.name in 'ping_concurrency,ping_timeout,skip_reserved_ips,ping_history_max_records' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
         </div>
       </div>
+    </div>
+
+  </div>{# end row 1 #}
+
+  {# ── SSH Jumphost ── #}
+  <div class="card mb-4" style="border: 2px solid var(--bs-primary-border-subtle);">
+    <h5 class="card-header d-flex align-items-center gap-2">
+      <span class="mdi mdi-server-network"></span> SSH Jumphost
+    </h5>
+    <div class="card-body">
+
+      <div class="alert alert-primary d-flex align-items-start gap-3 mb-4">
+        <span class="mdi mdi-earth fs-4 mt-1 flex-shrink-0"></span>
+        <div>
+          <strong>When enabled, all pings and scans run through the selected jumphost.</strong>
+          <br>
+          Covers scheduled auto-scans, manual "Ping All IPs", "Discover New IPs", and single-IP pings.
+          Useful when NetBox cannot reach monitored networks directly.
+          <br class="mb-1">
+          <span class="text-muted">
+            Per-prefix: set <strong>Ping Mode</strong> on a prefix's <strong>Ping Status</strong> tab
+            to <em>Force Local</em> (skip jumphost for that prefix) or
+            <em>Force SSH</em> (use a different jumphost for that prefix only).
+          </span>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-md-5">
+          {% for field in form %}{% if field.name in 'ssh_jumphost_enabled,default_jumphost,ssh_fallback_to_local' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
+        </div>
+
+        <div class="col-md-7">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="text-muted mb-0">
+              <span class="mdi mdi-server-network"></span> Configured Jumphosts
+            </h6>
+            <a href="{% url 'plugins:netbox_ping:sshjumphost_add' %}" class="btn btn-sm btn-outline-success">
+              <span class="mdi mdi-plus"></span> Add Jumphost
+            </a>
+          </div>
+
+          {% if jumphosts %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Host:Port</th>
+                  <th>Username</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for jh in jumphosts %}
+                <tr>
+                  <td><strong>{{ jh.name }}</strong></td>
+                  <td><code>{{ jh.host }}:{{ jh.port }}</code></td>
+                  <td>{{ jh.username }}</td>
+                  <td class="text-end">
+                    <a href="{% url 'plugins:netbox_ping:sshjumphost_edit' pk=jh.pk %}" class="btn btn-sm btn-outline-primary me-1">
+                      <span class="mdi mdi-pencil"></span>
+                    </a>
+                    <a href="{% url 'plugins:netbox_ping:sshjumphost_delete' pk=jh.pk %}" class="btn btn-sm btn-outline-danger">
+                      <span class="mdi mdi-delete"></span>
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-4 rounded border bg-body-tertiary text-muted">
+            <span class="mdi mdi-server-off d-block fs-1 mb-2 opacity-25"></span>
+            No jumphosts configured yet.
+            <br>
+            <a href="{% url 'plugins:netbox_ping:sshjumphost_add' %}" class="btn btn-sm btn-outline-success mt-2">
+              <span class="mdi mdi-plus"></span> Add your first jumphost
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
     </div>
   </div>
 
-  {# ── Stale IP Detection ── #}
-  <div class="row mb-4">
-    <div class="col-12">
-      <div class="card">
+  {# ── Row 2: DNS Servers + DNS Sync ── #}
+  <div class="row g-4 mb-4">
+
+    <div class="col-md-6">
+      <div class="card h-100">
         <h5 class="card-header">
-          <span class="mdi mdi-timer-sand"></span> Stale IP Detection
+          <span class="mdi mdi-dns-outline"></span> DNS Servers
         </h5>
         <div class="card-body">
-          <div class="row">
-            <div class="col-md-6">
-              <h6 class="text-muted mb-3">
-                <span class="mdi mdi-tag-outline"></span> Stale Tagging
-              </h6>
-              {% for field in form %}
-                {% if field.name in 'stale_enabled,stale_scans_threshold,stale_days_threshold' %}
-                <div class="mb-3">
-                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-                  {{ field }}
-                  {% if field.help_text %}
-                  <div class="form-text text-muted">{{ field.help_text }}</div>
-                  {% endif %}
-                  {% for error in field.errors %}
-                  <div class="text-danger">{{ error }}</div>
-                  {% endfor %}
-                </div>
-                {% endif %}
-              {% endfor %}
-            </div>
-            <div class="col-md-6">
-              <h6 class="text-muted mb-3">
-                <span class="mdi mdi-delete-outline"></span> Auto-Remove
-              </h6>
-              {% for field in form %}
-                {% if field.name in 'stale_remove_enabled,stale_remove_days' %}
-                <div class="mb-3">
-                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-                  {{ field }}
-                  {% if field.help_text %}
-                  <div class="form-text text-muted">{{ field.help_text }}</div>
-                  {% endif %}
-                  {% for error in field.errors %}
-                  <div class="text-danger">{{ error }}</div>
-                  {% endfor %}
-                </div>
-                {% endif %}
-              {% endfor %}
-              <div class="alert alert-warning mt-3 mb-0">
-                <span class="mdi mdi-alert-outline"></span>
-                <strong>Warning:</strong> Auto-remove permanently deletes IP addresses from NetBox.
-                Use per-prefix exclusions to protect critical prefixes.
-              </div>
+          <p class="text-muted small mb-3">
+            Up to three resolvers for reverse DNS lookups.
+            Leave blank to use the system resolver.
+          </p>
+          {% for field in form %}{% if field.name in 'dns_server1,dns_server2,dns_server3,perform_dns_lookup' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card h-100">
+        <h5 class="card-header">
+          <span class="mdi mdi-sync"></span> DNS Sync to NetBox
+        </h5>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Write resolved DNS names back to the built-in
+            <code>IPAddress.dns_name</code> field in NetBox.
+          </p>
+          {% for field in form %}{% if field.name in 'dns_sync_to_netbox,dns_clear_on_missing,dns_preserve_if_alive' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>{# end row 2 #}
+
+  {# ── Stale IP Detection ── #}
+  <div class="card mb-4">
+    <h5 class="card-header">
+      <span class="mdi mdi-timer-sand"></span> Stale IP Detection
+    </h5>
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        Tag IPs that have been unreachable for too long, and optionally delete them from NetBox.
+        Use per-prefix <strong>Stale Detection</strong> mode to exclude critical prefixes.
+      </p>
+      <div class="row">
+        <div class="col-md-6">
+          <h6 class="text-muted border-bottom pb-1 mb-3">
+            <span class="mdi mdi-tag-outline"></span> Stale Tagging
+          </h6>
+          {% for field in form %}{% if field.name in 'stale_enabled,stale_scans_threshold,stale_days_threshold' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
+        </div>
+        <div class="col-md-6">
+          <h6 class="text-muted border-bottom pb-1 mb-3">
+            <span class="mdi mdi-delete-outline"></span> Auto-Remove
+          </h6>
+          {% for field in form %}{% if field.name in 'stale_remove_enabled,stale_remove_days' %}
+          <div class="mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
+          <div class="alert alert-warning d-flex align-items-start gap-2 mb-0">
+            <span class="mdi mdi-alert-outline mt-1 flex-shrink-0"></span>
+            <div class="small">
+              <strong>Auto-remove permanently deletes IPs from NetBox.</strong>
+              Protect critical prefixes by setting their Stale Detection to <em>Exclude</em>.
             </div>
           </div>
         </div>
@@ -139,105 +281,87 @@
     </div>
   </div>
 
-  {# ── New IP Badge ── #}
-  <div class="row mb-4">
-    <div class="col-md-6">
+  {# ── Row 3: New IP Badge + Email Notifications ── #}
+  <div class="row g-4 mb-4">
+
+    <div class="col-md-4">
       <div class="card h-100">
         <h5 class="card-header">
           <span class="mdi mdi-new-box"></span> New IP Badge
         </h5>
         <div class="card-body">
-          {% for field in form %}
-            {% if field.name == 'new_ip_days_threshold' %}
-            <div class="mb-3">
-              <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-              {{ field }}
-              {% if field.help_text %}
-              <div class="form-text text-muted">{{ field.help_text }}</div>
-              {% endif %}
-              {% for error in field.errors %}
-              <div class="text-danger">{{ error }}</div>
-              {% endfor %}
-            </div>
-            {% endif %}
-          {% endfor %}
-          <div class="form-text text-muted">
-            Auto-discovered IPs will show a <span class="badge text-bg-info">New</span> badge
-            for this many days after discovery. Set to 0 to disable.
+          {% for field in form %}{% if field.name == 'new_ip_days_threshold' %}
+          <div class="mb-2">
+            <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
+          <div class="form-text">
+            Auto-discovered IPs display a <span class="badge text-bg-info">New</span>
+            badge for this many days. Set to <strong>0</strong> to disable.
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  {# ── Email Notifications ── #}
-  <div class="row mb-4">
-    <div class="col-12">
-      <div class="card">
+    <div class="col-md-8">
+      <div class="card h-100">
         <h5 class="card-header">
           <span class="mdi mdi-email-outline"></span> Email Notifications
         </h5>
         <div class="card-body">
           <div class="row">
             <div class="col-md-6">
-              {% for field in form %}
-                {% if field.name in 'email_notifications_enabled,email_recipients,email_digest_interval' %}
-                <div class="mb-3">
-                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-                  {{ field }}
-                  {% if field.help_text %}
-                  <div class="form-text text-muted">{{ field.help_text }}</div>
-                  {% endif %}
-                  {% for error in field.errors %}
-                  <div class="text-danger">{{ error }}</div>
-                  {% endfor %}
-                </div>
-                {% endif %}
-              {% endfor %}
+              {% for field in form %}{% if field.name in 'email_notifications_enabled,email_recipients,email_digest_interval' %}
+              <div class="mb-3">
+                <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              {% endif %}{% endfor %}
             </div>
             <div class="col-md-6">
-              {% for field in form %}
-                {% if field.name in 'email_include_details,email_utilization_threshold,email_on_change_only' %}
-                <div class="mb-3">
-                  <label for="{{ field.id_for_label }}" class="form-label fw-bold">{{ field.label }}</label>
-                  {{ field }}
-                  {% if field.help_text %}
-                  <div class="form-text text-muted">{{ field.help_text }}</div>
-                  {% endif %}
-                  {% for error in field.errors %}
-                  <div class="text-danger">{{ error }}</div>
-                  {% endfor %}
-                </div>
-                {% endif %}
-              {% endfor %}
-              {% if settings.email_last_digest_sent %}
+              {% for field in form %}{% if field.name in 'email_include_details,email_utilization_threshold,email_on_change_only' %}
               <div class="mb-3">
-                <span class="text-muted">
-                  <span class="mdi mdi-clock-outline"></span>
-                  Last digest sent: {{ settings.email_last_digest_sent|timesince }} ago
-                </span>
+                <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text text-muted">{{ field.help_text }}</div>{% endif %}
+                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              {% endif %}{% endfor %}
+              {% if settings.email_last_digest_sent %}
+              <div class="text-muted small">
+                <span class="mdi mdi-clock-outline"></span>
+                Last digest sent: {{ settings.email_last_digest_sent|timesince }} ago
               </div>
               {% endif %}
             </div>
           </div>
         </div>
         <div class="card-footer text-end">
-          <button type="button" class="btn btn-sm btn-outline-info" onclick="document.getElementById('test-email-form').submit();">
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  onclick="document.getElementById('test-email-form').submit();">
             <span class="mdi mdi-email-fast-outline"></span> Send Test Email
           </button>
-          <button type="button" class="btn btn-sm btn-primary ms-2" onclick="document.getElementById('send-digest-form').submit();">
+          <button type="button" class="btn btn-sm btn-outline-primary ms-2"
+                  onclick="document.getElementById('send-digest-form').submit();">
             <span class="mdi mdi-email-arrow-right-outline"></span> Send Digest Now
           </button>
         </div>
       </div>
     </div>
-  </div>
+
+  </div>{# end row 3 #}
 
   <div class="text-end mb-4">
-    <button type="submit" class="btn btn-primary">
+    <button type="submit" class="btn btn-primary btn-lg">
       <span class="mdi mdi-content-save"></span> Save Settings
     </button>
   </div>
+
 </form>
 
 <form id="test-email-form" method="post" action="{% url 'plugins:netbox_ping:test_email' %}" style="display:none;">
@@ -247,93 +371,74 @@
   {% csrf_token %}
 </form>
 
-{# ── Per-Prefix Schedules ── #}
+{# ── Per-Prefix Schedule Overrides ── #}
 <div class="card">
-  <h5 class="card-header">
-    <span class="mdi mdi-calendar-clock"></span> Per-Prefix Schedules
+  <h5 class="card-header d-flex justify-content-between align-items-center">
+    <span><span class="mdi mdi-calendar-clock"></span> Per-Prefix Schedule Overrides</span>
+    <span class="text-muted small fw-normal">Configure from a prefix's Ping Status tab</span>
   </h5>
-  <div class="card-body">
+  <div class="card-body{% if not schedule_data %} text-center py-5{% endif %}">
     {% if schedule_data %}
     <div class="table-responsive">
-      <table class="table table-hover">
+      <table class="table table-hover mb-0">
         <thead>
           <tr>
             <th>Prefix</th>
-            <th>Scan Mode</th>
+            <th>Scan</th>
             <th>Scan Interval</th>
-            <th>Discover Mode</th>
+            <th>Discover</th>
             <th>Discover Interval</th>
-            <th>Stale Detection</th>
+            <th>Stale</th>
+            <th>Ping Mode</th>
             <th>Last Scanned</th>
             <th>Last Discovered</th>
-            <th>Actions</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           {% for item in schedule_data %}
           <tr>
             <td>
-              <a href="{{ item.schedule.prefix.get_absolute_url }}">
-                {{ item.schedule.prefix.prefix }}
-              </a>
+              <a href="{{ item.schedule.prefix.get_absolute_url }}">{{ item.schedule.prefix.prefix }}</a>
             </td>
             <td>
-              {% if item.schedule.scan_mode == 'follow_global' %}
-                <span class="badge text-bg-info">Follow Global</span>
-              {% elif item.schedule.scan_mode == 'custom_on' %}
-                <span class="badge text-bg-success">Custom On</span>
-              {% else %}
-                <span class="badge text-bg-danger">Custom Off</span>
-              {% endif %}
+              {% if item.schedule.scan_mode == 'follow_global' %}<span class="badge text-bg-secondary">Global</span>
+              {% elif item.schedule.scan_mode == 'custom_on' %}<span class="badge text-bg-success">On</span>
+              {% else %}<span class="badge text-bg-danger">Off</span>{% endif %}
             </td>
             <td>
-              {% if item.schedule.scan_mode == 'custom_on' %}
-                {{ item.schedule.get_scan_interval_display }}
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
+              {% if item.schedule.scan_mode == 'custom_on' %}{{ item.schedule.get_scan_interval_display }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
             <td>
-              {% if item.schedule.discover_mode == 'follow_global' %}
-                <span class="badge text-bg-info">Follow Global</span>
-              {% elif item.schedule.discover_mode == 'custom_on' %}
-                <span class="badge text-bg-success">Custom On</span>
-              {% else %}
-                <span class="badge text-bg-danger">Custom Off</span>
-              {% endif %}
+              {% if item.schedule.discover_mode == 'follow_global' %}<span class="badge text-bg-secondary">Global</span>
+              {% elif item.schedule.discover_mode == 'custom_on' %}<span class="badge text-bg-success">On</span>
+              {% else %}<span class="badge text-bg-danger">Off</span>{% endif %}
             </td>
             <td>
-              {% if item.schedule.discover_mode == 'custom_on' %}
-                {{ item.schedule.get_discover_interval_display }}
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
+              {% if item.schedule.discover_mode == 'custom_on' %}{{ item.schedule.get_discover_interval_display }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
             <td>
-              {% if item.schedule.stale_mode == 'follow_global' %}
-                <span class="badge text-bg-info">Follow Global</span>
-              {% else %}
-                <span class="badge text-bg-warning">Excluded</span>
-              {% endif %}
+              {% if item.schedule.stale_mode == 'follow_global' %}<span class="badge text-bg-secondary">Global</span>
+              {% else %}<span class="badge text-bg-warning text-dark">Excluded</span>{% endif %}
             </td>
             <td>
-              {% if item.scan_result and item.scan_result.last_scanned %}
-                {{ item.scan_result.last_scanned|timesince }} ago
-              {% else %}
-                <span class="text-muted">Never</span>
-              {% endif %}
+              {% if item.schedule.ping_mode == 'follow_global' %}<span class="badge text-bg-secondary">Global</span>
+              {% elif item.schedule.ping_mode == 'force_local' %}<span class="badge text-bg-info">Local</span>
+              {% else %}<span class="badge text-bg-primary">SSH{% if item.schedule.custom_jumphost %}: {{ item.schedule.custom_jumphost.name }}{% endif %}</span>{% endif %}
             </td>
             <td>
-              {% if item.scan_result and item.scan_result.last_discovered %}
-                {{ item.scan_result.last_discovered|timesince }} ago
-              {% else %}
-                <span class="text-muted">Never</span>
-              {% endif %}
+              {% if item.scan_result and item.scan_result.last_scanned %}{{ item.scan_result.last_scanned|timesince }} ago
+              {% else %}<span class="text-muted">Never</span>{% endif %}
             </td>
             <td>
-              <a href="{{ item.schedule.prefix.get_absolute_url }}ping/"
-                 class="btn btn-sm btn-outline-primary">
-                <span class="mdi mdi-pencil"></span> Edit
+              {% if item.scan_result and item.scan_result.last_discovered %}{{ item.scan_result.last_discovered|timesince }} ago
+              {% else %}<span class="text-muted">Never</span>{% endif %}
+            </td>
+            <td>
+              <a href="{{ item.schedule.prefix.get_absolute_url }}ping/" class="btn btn-sm btn-outline-primary">
+                <span class="mdi mdi-pencil"></span>
               </a>
             </td>
           </tr>
@@ -342,11 +447,11 @@
       </table>
     </div>
     {% else %}
-    <div class="text-muted">
-      No per-prefix schedules configured. You can set up individual schedules from a prefix's
-      <strong>Ping Status</strong> tab.
-    </div>
+    <span class="mdi mdi-calendar-clock d-block fs-1 text-muted opacity-25 mb-2"></span>
+    <div class="text-muted">No per-prefix overrides configured yet.</div>
+    <small class="text-muted">Set them up from a prefix's <strong>Ping Status</strong> tab.</small>
     {% endif %}
   </div>
 </div>
+
 {% endblock %}
