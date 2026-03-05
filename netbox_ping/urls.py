@@ -37,4 +37,10 @@ urlpatterns = [
     path('settings/', views.PluginSettingsEditView.as_view(), name='settings'),
     path('settings/test-email/', views.SendTestEmailView.as_view(), name='test_email'),
     path('settings/send-digest/', views.SendDigestNowView.as_view(), name='send_digest'),
+
+    # SSH Jumphosts
+    path('jumphosts/', views.SSHJumpHostListView.as_view(), name='sshjumphost_list'),
+    path('jumphosts/add/', views.SSHJumpHostCreateView.as_view(), name='sshjumphost_add'),
+    path('jumphosts/<int:pk>/edit/', views.SSHJumpHostEditView.as_view(), name='sshjumphost_edit'),
+    path('jumphosts/<int:pk>/delete/', views.SSHJumpHostDeleteView.as_view(), name='sshjumphost_delete'),
 ]

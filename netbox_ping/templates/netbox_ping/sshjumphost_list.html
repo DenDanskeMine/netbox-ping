@@ -1,0 +1,61 @@
+{% extends 'base/layout.html' %}
+{% load helpers %}
+
+{% block title %}SSH Jumphosts{% endblock %}
+
+{% block header %}
+  <div class="d-flex justify-content-between align-items-center">
+    <h1>SSH Jumphosts</h1>
+    <a href="{% url 'plugins:netbox_ping:sshjumphost_add' %}" class="btn btn-success">
+      <span class="mdi mdi-plus"></span> Add Jumphost
+    </a>
+  </div>
+{% endblock %}
+
+{% block content %}
+{% if jumphosts %}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Host</th>
+            <th>Port</th>
+            <th>Username</th>
+            <th>Key File</th>
+            <th>Description</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for jh in jumphosts %}
+          <tr>
+            <td><strong>{{ jh.name }}</strong></td>
+            <td>{{ jh.host }}</td>
+            <td>{{ jh.port }}</td>
+            <td>{{ jh.username }}</td>
+            <td><code>{{ jh.key_file }}</code></td>
+            <td>{{ jh.description|default:"—" }}</td>
+            <td class="text-end">
+              <a href="{% url 'plugins:netbox_ping:sshjumphost_edit' pk=jh.pk %}" class="btn btn-sm btn-outline-primary me-1">
+                <span class="mdi mdi-pencil"></span> Edit
+              </a>
+              <a href="{% url 'plugins:netbox_ping:sshjumphost_delete' pk=jh.pk %}" class="btn btn-sm btn-outline-danger">
+                <span class="mdi mdi-delete"></span> Delete
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+  No SSH Jumphosts configured yet. Click <strong>Add Jumphost</strong> to create one.
+</div>
+{% endif %}
+{% endblock %}

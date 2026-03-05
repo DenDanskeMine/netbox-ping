@@ -8,6 +8,24 @@ from .models import PluginSettings
 logger = logging.getLogger('netbox.netbox_ping')
 
 
+def _resolve_jumphost(prefix, settings):
+    """
+    Returns (SSHJumpHost|None, fallback_to_local: bool).
+    None means: use local ping.
+    """
+    from .models import PrefixSchedule
+    if not settings.ssh_jumphost_enabled:
+        return None, True
+    if prefix is None:
+        return settings.default_jumphost, settings.ssh_fallback_to_local
+    schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
+    if schedule:
+        jh = schedule.get_effective_jumphost(settings)
+    else:
+        jh = settings.default_jumphost
+    return jh, settings.ssh_fallback_to_local
+
+
 def _label_job(job, name):
     """Update a job's display name in the DB so the NetBox job list is descriptive."""
     try:
@@ -155,6 +173,7 @@ class PrefixScanJob(JobRunner):
                 return
 
         settings = PluginSettings.load()
+        jumphost, fallback = _resolve_jumphost(prefix, settings)
 
         self.logger.info(f'Starting scan of prefix {prefix.prefix}')
         print(f'[Prefix Scan] Starting scan of {prefix.prefix}', flush=True)
@@ -168,6 +187,8 @@ class PrefixScanJob(JobRunner):
             job_logger=self.logger,
             skip_reserved=settings.skip_reserved_ips,
             stale_check=not is_manual,
+            jumphost=jumphost,
+            fallback_to_local=fallback,
         )
         skipped_str = f', {result["skipped"]} skipped' if result.get('skipped') else ''
         self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up{skipped_str}')
@@ -201,6 +222,7 @@ class PrefixDiscoverJob(JobRunner):
             return
 
         settings = PluginSettings.load()
+        jumphost, fallback = _resolve_jumphost(prefix, settings)
 
         self.logger.info(f'Starting discovery of prefix {prefix.prefix}')
         print(f'[Prefix Discover] Starting discovery of {prefix.prefix}', flush=True)
@@ -212,6 +234,8 @@ class PrefixDiscoverJob(JobRunner):
             ping_timeout=settings.ping_timeout,
             dns_settings=settings,
             job_logger=self.logger,
+            jumphost=jumphost,
+            fallback_to_local=fallback,
         )
         self.logger.info(
             f'Discovery complete: found {len(result["discovered"])} new IPs '
@@ -237,14 +261,46 @@ class SingleIPPingJob(JobRunner):
         from .utils import ping_host, resolve_dns, _compute_dns_sync
         from .models import PingResult, PingHistory, DnsHistory, ScanEvent
 
+        from ipam.models import Prefix
+
         ip_obj = self.job.object
         ip_str = str(ip_obj.address.ip)
         settings = PluginSettings.load()
         dns_servers = settings.get_dns_servers()
 
+        # Resolve jumphost: find the most specific containing prefix for this IP
+        parent_prefix = Prefix.objects.filter(
+            prefix__net_contains_or_equals=str(ip_obj.address.ip),
+            vrf=ip_obj.vrf,
+        ).order_by('-prefix__prefixlen').first()
+        jumphost, fallback = _resolve_jumphost(parent_prefix, settings)
+
         self.logger.info(f'Pinging {ip_str}')
 
-        ping_data = ping_host(ip_str)
+        from .utils import _start_ssh_master, _stop_ssh_master
+
+        ssh_socket = None
+        ssh_target = None
+        socket_path = None
+        if jumphost:
+            socket_path = f'/tmp/netbox-ping-single-{jumphost.pk}-{ip_obj.pk}.sock'
+            try:
+                _start_ssh_master(jumphost, socket_path)
+                ssh_socket = socket_path
+                ssh_target = f'{jumphost.username}@{jumphost.host}'
+                self.logger.info(f'SSH master to {jumphost.host} established')
+            except Exception as e:
+                if fallback:
+                    self.logger.warning(f'SSH master to {jumphost.host} failed, falling back to local: {e}')
+                else:
+                    raise
+
+        try:
+            ping_data = ping_host(ip_str, ssh_socket=ssh_socket, ssh_target=ssh_target)
+        finally:
+            if ssh_socket and jumphost and socket_path:
+                _stop_ssh_master(jumphost, socket_path)
+
         dns_name = ''
         dns_attempted = False
         if settings.perform_dns_lookup and ping_data['is_reachable']:

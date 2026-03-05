@@ -78,6 +78,28 @@
           </td>
         </tr>
         <tr>
+          <th scope="row" style="width: 30%">Ping Mode</th>
+          <td>
+            <div class="d-flex align-items-center gap-3">
+              {{ schedule_form.ping_mode }}
+              <span class="text-muted" id="ping-global-hint">
+                {% if plugin_settings.ssh_jumphost_enabled %}
+                  Global: <span class="badge text-bg-success">SSH On</span>
+                  {% if plugin_settings.default_jumphost %}
+                    — {{ plugin_settings.default_jumphost.name }}
+                  {% endif %}
+                {% else %}
+                  Global: <span class="badge text-bg-secondary">Local</span>
+                {% endif %}
+              </span>
+            </div>
+          </td>
+        </tr>
+        <tr id="custom-jumphost-row">
+          <th scope="row">Custom Jumphost</th>
+          <td>{{ schedule_form.custom_jumphost }}</td>
+        </tr>
+        <tr>
           <th scope="row">Last Scanned</th>
           <td>
             {% if scan_result and scan_result.last_scanned %}
@@ -179,14 +201,34 @@
     setTimeout(update, 500);
   }
 
+  function setupPingModeToggle() {
+    var modeEl = document.getElementById('id_ping_mode');
+    var rowEl = document.getElementById('custom-jumphost-row');
+    var hintEl = document.getElementById('ping-global-hint');
+    if (!modeEl || !rowEl) return;
+
+    function update() {
+      var val = modeEl.value;
+      rowEl.style.display = (val === 'force_ssh') ? '' : 'none';
+      if (hintEl) hintEl.style.display = (val === 'follow_global') ? '' : 'none';
+    }
+
+    modeEl.addEventListener('change', update);
+    update();
+    setTimeout(update, 200);
+    setTimeout(update, 500);
+  }
+
   // Run after page is fully loaded (including TomSelect init)
   if (document.readyState === 'complete') {
     setupToggle('id_scan_mode', 'scan-interval-row', 'scan-global-hint');
     setupToggle('id_discover_mode', 'discover-interval-row', 'discover-global-hint');
+    setupPingModeToggle();
   } else {
     window.addEventListener('load', function() {
       setupToggle('id_scan_mode', 'scan-interval-row', 'scan-global-hint');
       setupToggle('id_discover_mode', 'discover-interval-row', 'discover-global-hint');
+      setupPingModeToggle();
     });
   }
 })();

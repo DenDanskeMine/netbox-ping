@@ -1,7 +1,7 @@
 from django import forms
 from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm
 from utilities.forms.rendering import FieldSet
-from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule
+from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, SSHJumpHost
 
 
 class PingResultFilterForm(NetBoxModelFilterSetForm):
@@ -69,6 +69,17 @@ class SubnetScanResultFilterForm(NetBoxModelFilterSetForm):
     )
 
 
+class SSHJumpHostForm(forms.ModelForm):
+    """Form for creating/editing an SSH Jumphost."""
+
+    class Meta:
+        model = SSHJumpHost
+        fields = ('name', 'host', 'port', 'username', 'key_file', 'known_hosts_file', 'description')
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 2}),
+        }
+
+
 class PluginSettingsForm(NetBoxModelForm):
     """Form for editing DNS + scheduling + email settings."""
 
@@ -83,6 +94,7 @@ class PluginSettingsForm(NetBoxModelForm):
             'ping_concurrency', 'ping_timeout', 'skip_reserved_ips',
             'stale_enabled', 'stale_scans_threshold', 'stale_days_threshold',
             'stale_remove_enabled', 'stale_remove_days',
+            'ssh_jumphost_enabled', 'default_jumphost', 'ssh_fallback_to_local',
             'new_ip_days_threshold',
             'email_notifications_enabled', 'email_recipients',
             'email_digest_interval', 'email_include_details',
@@ -105,4 +117,5 @@ class PrefixScheduleForm(forms.ModelForm):
             'scan_mode', 'scan_interval',
             'discover_mode', 'discover_interval',
             'stale_mode',
+            'ping_mode', 'custom_jumphost',
         )

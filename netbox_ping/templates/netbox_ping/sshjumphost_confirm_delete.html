@@ -1,0 +1,48 @@
+{% extends 'base/layout.html' %}
+{% load helpers %}
+
+{% block title %}Delete SSH Jumphost: {{ object.name }}{% endblock %}
+
+{% block header %}
+  <h1>Delete SSH Jumphost: {{ object.name }}</h1>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-6">
+    <div class="card border-danger">
+      <div class="card-body">
+        <p>Are you sure you want to delete the SSH Jumphost <strong>{{ object.name }}</strong> ({{ object.host }}:{{ object.port }})?</p>
+
+        {% if used_by_settings or used_by_schedules %}
+        <div class="alert alert-warning">
+          <span class="mdi mdi-alert-outline"></span>
+          <strong>Warning:</strong> This jumphost is currently in use:
+          <ul class="mb-0 mt-1">
+            {% if used_by_settings %}
+            <li>It is set as the <strong>default jumphost</strong> in Plugin Settings.</li>
+            {% endif %}
+            {% if used_by_schedules %}
+            <li>It is used by <strong>{{ used_by_schedules }} prefix schedule(s)</strong>.</li>
+            {% endif %}
+          </ul>
+          These references will be cleared on deletion.
+        </div>
+        {% endif %}
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="text-end">
+            <a href="{% url 'plugins:netbox_ping:sshjumphost_list' %}" class="btn btn-secondary me-2">
+              Cancel
+            </a>
+            <button type="submit" class="btn btn-danger">
+              <span class="mdi mdi-delete"></span> Confirm Delete
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

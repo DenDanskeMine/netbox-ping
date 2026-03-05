@@ -292,6 +292,31 @@ class ScanEvent(models.Model):
         return f'{self.get_event_type_display()} — {self.ip_address or self.prefix}'
 
 
+class SSHJumpHost(models.Model):
+    """SSH jumphost for routing pings through an SSH tunnel."""
+
+    name = models.CharField(max_length=100, unique=True)
+    host = models.CharField(max_length=255)
+    port = models.IntegerField(default=22)
+    username = models.CharField(max_length=64)
+    key_file = models.CharField(
+        max_length=512,
+        help_text='Absolute path to private key on the NetBox host',
+    )
+    known_hosts_file = models.CharField(
+        max_length=512,
+        blank=True,
+        help_text='Leave blank to skip host key checking',
+    )
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
+
 class PluginSettings(models.Model):
     """Singleton model for plugin DNS configuration."""
 
@@ -448,6 +473,26 @@ class PluginSettings(models.Model):
         help_text='Delete IP from NetBox after this many days since last seen online',
     )
 
+    # ── SSH Jumphost ──
+    ssh_jumphost_enabled = models.BooleanField(
+        default=False,
+        verbose_name='Enable SSH Jumphost',
+        help_text='Route pings through an SSH jumphost instead of pinging directly',
+    )
+    default_jumphost = models.ForeignKey(
+        'SSHJumpHost',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        verbose_name='Default Jumphost',
+    )
+    ssh_fallback_to_local = models.BooleanField(
+        default=True,
+        verbose_name='Fallback to Local',
+        help_text='Fall back to local ping if SSH connection fails',
+    )
+
     # ── New IP Badge ──
     new_ip_days_threshold = models.PositiveIntegerField(
         default=7,
@@ -470,6 +515,12 @@ class PluginSettings(models.Model):
     def get_dns_servers(self):
         return [s for s in [self.dns_server1, self.dns_server2, self.dns_server3] if s]
 
+
+PING_MODE_CHOICES = [
+    ('follow_global', 'Follow Global'),
+    ('force_local', 'Force Local Ping'),
+    ('force_ssh', 'Force SSH Jumphost'),
+]
 
 SCHEDULE_MODE_CHOICES = [
     ('follow_global', 'Follow Global'),
@@ -526,6 +577,21 @@ class PrefixSchedule(models.Model):
         verbose_name='Stale Detection',
         help_text='Follow global stale settings or exclude this prefix from stale tagging and auto-removal',
     )
+    ping_mode = models.CharField(
+        max_length=20,
+        choices=PING_MODE_CHOICES,
+        default='follow_global',
+        verbose_name='Ping Mode',
+        help_text='Follow global jumphost setting, force local ping, or force a specific SSH jumphost',
+    )
+    custom_jumphost = models.ForeignKey(
+        'SSHJumpHost',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        help_text='Used when Ping Mode is Force SSH Jumphost',
+    )
 
     class Meta:
         verbose_name = 'Prefix Schedule'
@@ -557,3 +623,14 @@ class PrefixSchedule(models.Model):
         if self.discover_mode == 'custom_on':
             return self.discover_interval
         return global_settings.auto_discover_interval
+
+    def get_effective_jumphost(self, global_settings):
+        """Returns SSHJumpHost or None (meaning: use local ping)."""
+        if self.ping_mode == 'force_local':
+            return None
+        if self.ping_mode == 'force_ssh':
+            return self.custom_jumphost or global_settings.default_jumphost
+        # follow_global
+        if global_settings.ssh_jumphost_enabled:
+            return global_settings.default_jumphost
+        return None

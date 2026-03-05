@@ -25,6 +25,10 @@ menu = PluginMenu(
                 link='plugins:netbox_ping:settings',
                 link_text='Settings',
             ),
+            PluginMenuItem(
+                link='plugins:netbox_ping:sshjumphost_list',
+                link_text='SSH Jumphosts',
+            ),
         )),
     ),
     icon_class='mdi mdi-lan-check',
