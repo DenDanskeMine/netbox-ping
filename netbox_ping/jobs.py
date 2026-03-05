@@ -335,12 +335,6 @@ class ScheduleRecoveryJob(JobRunner):
         bootstrapped_scan = 0
         bootstrapped_discover = 0
 
-        # Stagger overdue/recovered jobs to prevent a thundering herd on startup
-        # (e.g. after a Redis wipe or fresh migration). Each recovered job is
-        # offset by STAGGER_SECS relative to the previous one.
-        STAGGER_SECS = 30
-        overdue_index = 0  # shared counter across scan + discover
-
         for prefix in prefixes:
             schedule = prefix_schedules.get(prefix.pk)
             ssr = scan_results.get(prefix.pk)
@@ -373,14 +367,11 @@ class ScheduleRecoveryJob(JobRunner):
             if scan_enabled and scan_interval > 0:
                 if ssr and ssr.next_scan_at:
                     if ssr.next_scan_at <= now:
-                        # Overdue — stagger re-enqueue to avoid thundering herd
+                        # Overdue — re-enqueue immediately if no active job
                         if not _has_active_scan(['pending', 'scheduled', 'running']):
-                            run_at = now + timedelta(seconds=overdue_index * STAGGER_SECS)
-                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=run_at)
-                            ssr.next_scan_at = run_at
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=now)
                             ssr.scan_job_id = job.pk
-                            ssr.save(update_fields=['next_scan_at', 'scan_job_id'])
-                            overdue_index += 1
+                            ssr.save(update_fields=['scan_job_id'])
                             recovered_scan += 1
                     else:
                         # Future — re-enqueue if job was lost (e.g. Redis wipe)
@@ -411,12 +402,9 @@ class ScheduleRecoveryJob(JobRunner):
                 if ssr and ssr.next_discover_at:
                     if ssr.next_discover_at <= now:
                         if not _has_active_discover(['pending', 'scheduled', 'running']):
-                            run_at = now + timedelta(seconds=overdue_index * STAGGER_SECS)
-                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=run_at)
-                            ssr.next_discover_at = run_at
+                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=now)
                             ssr.discover_job_id = job.pk
-                            ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
-                            overdue_index += 1
+                            ssr.save(update_fields=['discover_job_id'])
                             recovered_discover += 1
                     else:
                         if not _has_active_discover(['pending', 'scheduled']):
