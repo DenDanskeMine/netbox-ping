@@ -12,8 +12,13 @@ def _schedule_next_scan(prefix, settings):
     """
     Compute and store next_scan_at for a prefix, then enqueue a scheduled job.
     Safe to call after any scan (manual or auto) so the countdown always resets.
+
+    Uses SubnetScanResult.scan_job_id to track the scheduled job PK instead of
+    instance=prefix (Prefix is not a JobsMixin model, so NetBox rejects instance-
+    linked jobs for it).
     """
     from .models import PrefixSchedule, SubnetScanResult
+    from core.models import Job as CoreJob
 
     schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
     if schedule:
@@ -27,22 +32,32 @@ def _schedule_next_scan(prefix, settings):
 
     if enabled and interval > 0:
         next_at = timezone.now() + timedelta(minutes=interval)
+
+        # Cancel the previously scheduled job if still pending/scheduled
+        if ssr.scan_job_id:
+            CoreJob.objects.filter(pk=ssr.scan_job_id, status__in=['pending', 'scheduled']).delete()
+
+        job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
         ssr.next_scan_at = next_at
-        ssr.save(update_fields=['next_scan_at'])
-        PrefixScanJob.enqueue_once(instance=prefix, schedule_at=next_at)
+        ssr.scan_job_id = job.pk
+        ssr.save(update_fields=['next_scan_at', 'scan_job_id'])
         logger.debug(f'Scheduled next scan of {prefix.prefix} at {next_at}')
     else:
-        # Auto-scan disabled — clear any scheduled job and the timestamp
+        # Auto-scan disabled — cancel existing job and clear timestamps
+        if ssr.scan_job_id:
+            CoreJob.objects.filter(pk=ssr.scan_job_id, status__in=['pending', 'scheduled']).delete()
         ssr.next_scan_at = None
-        ssr.save(update_fields=['next_scan_at'])
-        _cancel_scheduled_jobs(PrefixScanJob, prefix)
+        ssr.scan_job_id = None
+        ssr.save(update_fields=['next_scan_at', 'scan_job_id'])
 
 
 def _schedule_next_discover(prefix, settings):
     """
     Compute and store next_discover_at for a prefix, then enqueue a scheduled job.
+    Uses SubnetScanResult.discover_job_id for deduplication (same reason as scan).
     """
     from .models import PrefixSchedule, SubnetScanResult
+    from core.models import Job as CoreJob
 
     schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
     if schedule:
@@ -56,24 +71,21 @@ def _schedule_next_discover(prefix, settings):
 
     if enabled and interval > 0:
         next_at = timezone.now() + timedelta(minutes=interval)
+
+        if ssr.discover_job_id:
+            CoreJob.objects.filter(pk=ssr.discover_job_id, status__in=['pending', 'scheduled']).delete()
+
+        job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
         ssr.next_discover_at = next_at
-        ssr.save(update_fields=['next_discover_at'])
-        PrefixDiscoverJob.enqueue_once(instance=prefix, schedule_at=next_at)
+        ssr.discover_job_id = job.pk
+        ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
         logger.debug(f'Scheduled next discover of {prefix.prefix} at {next_at}')
     else:
+        if ssr.discover_job_id:
+            CoreJob.objects.filter(pk=ssr.discover_job_id, status__in=['pending', 'scheduled']).delete()
         ssr.next_discover_at = None
-        ssr.save(update_fields=['next_discover_at'])
-        _cancel_scheduled_jobs(PrefixDiscoverJob, prefix)
-
-
-def _cancel_scheduled_jobs(job_class, instance):
-    """Cancel any pending/scheduled jobs of job_class for the given instance."""
-    try:
-        job_class.get_jobs(instance).filter(
-            status__in=['pending', 'scheduled']
-        ).delete()
-    except Exception:
-        pass
+        ssr.discover_job_id = None
+        ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
 
 
 def _schedule_next_digest(settings):
@@ -297,6 +309,7 @@ class ScheduleRecoveryJob(JobRunner):
     def run(self, *args, **kwargs):
         from ipam.models import Prefix
         from .models import PrefixSchedule, SubnetScanResult
+        from core.models import Job as CoreJob
 
         settings = PluginSettings.load()
         now = timezone.now()
@@ -336,74 +349,84 @@ class ScheduleRecoveryJob(JobRunner):
                 discover_enabled = settings.auto_discover_enabled
                 discover_interval = settings.auto_discover_interval
 
+            # --- Helpers: check active jobs via stored PK (Prefix is not a
+            #     JobsMixin model, so instance-linked jobs are not supported) ---
+            def _has_active_scan(statuses):
+                if ssr and ssr.scan_job_id:
+                    return CoreJob.objects.filter(pk=ssr.scan_job_id, status__in=statuses).exists()
+                return False
+
+            def _has_active_discover(statuses):
+                if ssr and ssr.discover_job_id:
+                    return CoreJob.objects.filter(pk=ssr.discover_job_id, status__in=statuses).exists()
+                return False
+
             # --- Scan recovery / bootstrap ---
             if scan_enabled and scan_interval > 0:
                 if ssr and ssr.next_scan_at:
-                    # next_scan_at is set — check if the job still exists in DB/Redis
                     if ssr.next_scan_at <= now:
-                        # Overdue — job was lost (Redis wipe) or never ran
-                        has_active = PrefixScanJob.get_jobs(prefix).filter(
-                            status__in=['pending', 'scheduled', 'running']
-                        ).exists()
-                        if not has_active:
-                            PrefixScanJob.enqueue_once(instance=prefix, schedule_at=now)
+                        # Overdue — re-enqueue immediately if no active job
+                        if not _has_active_scan(['pending', 'scheduled', 'running']):
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=now)
+                            ssr.scan_job_id = job.pk
+                            ssr.save(update_fields=['scan_job_id'])
                             recovered_scan += 1
                     else:
-                        # Future — ensure the job exists in DB (may have been lost in Redis wipe)
-                        has_active = PrefixScanJob.get_jobs(prefix).filter(
-                            status__in=['pending', 'scheduled']
-                        ).exists()
-                        if not has_active:
-                            PrefixScanJob.enqueue_once(instance=prefix, schedule_at=ssr.next_scan_at)
+                        # Future — re-enqueue if job was lost (e.g. Redis wipe)
+                        if not _has_active_scan(['pending', 'scheduled']):
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=ssr.next_scan_at)
+                            ssr.scan_job_id = job.pk
+                            ssr.save(update_fields=['scan_job_id'])
                             recovered_scan += 1
                 else:
                     # No next_scan_at yet — bootstrap for newly enabled prefixes
-                    has_active = PrefixScanJob.get_jobs(prefix).filter(
-                        status__in=['pending', 'scheduled', 'running']
-                    ).exists()
-                    if not has_active:
+                    if not _has_active_scan(['pending', 'scheduled', 'running']):
                         next_at = now + timedelta(minutes=scan_interval)
                         if ssr:
                             ssr.next_scan_at = next_at
-                            ssr.save(update_fields=['next_scan_at'])
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            ssr.scan_job_id = job.pk
+                            ssr.save(update_fields=['next_scan_at', 'scan_job_id'])
                         else:
-                            ssr = SubnetScanResult.objects.create(prefix=prefix, next_scan_at=next_at)
+                            job = PrefixScanJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            ssr = SubnetScanResult.objects.create(
+                                prefix=prefix, next_scan_at=next_at, scan_job_id=job.pk
+                            )
                             scan_results[prefix.pk] = ssr
-                        PrefixScanJob.enqueue_once(instance=prefix, schedule_at=next_at)
                         bootstrapped_scan += 1
 
             # --- Discover recovery / bootstrap ---
             if discover_enabled and discover_interval > 0:
                 if ssr and ssr.next_discover_at:
                     if ssr.next_discover_at <= now:
-                        has_active = PrefixDiscoverJob.get_jobs(prefix).filter(
-                            status__in=['pending', 'scheduled', 'running']
-                        ).exists()
-                        if not has_active:
-                            PrefixDiscoverJob.enqueue_once(instance=prefix, schedule_at=now)
+                        if not _has_active_discover(['pending', 'scheduled', 'running']):
+                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=now)
+                            ssr.discover_job_id = job.pk
+                            ssr.save(update_fields=['discover_job_id'])
                             recovered_discover += 1
                     else:
-                        has_active = PrefixDiscoverJob.get_jobs(prefix).filter(
-                            status__in=['pending', 'scheduled']
-                        ).exists()
-                        if not has_active:
-                            PrefixDiscoverJob.enqueue_once(instance=prefix, schedule_at=ssr.next_discover_at)
+                        if not _has_active_discover(['pending', 'scheduled']):
+                            job = PrefixDiscoverJob.enqueue(
+                                data={'prefix_id': prefix.pk}, schedule_at=ssr.next_discover_at
+                            )
+                            ssr.discover_job_id = job.pk
+                            ssr.save(update_fields=['discover_job_id'])
                             recovered_discover += 1
                 else:
-                    has_active = PrefixDiscoverJob.get_jobs(prefix).filter(
-                        status__in=['pending', 'scheduled', 'running']
-                    ).exists()
-                    if not has_active:
+                    if not _has_active_discover(['pending', 'scheduled', 'running']):
                         next_at = now + timedelta(minutes=discover_interval)
                         if ssr:
                             ssr.next_discover_at = next_at
-                            ssr.save(update_fields=['next_discover_at'])
+                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            ssr.discover_job_id = job.pk
+                            ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
                         else:
                             ssr = SubnetScanResult.objects.get_or_create(prefix=prefix)[0]
                             ssr.next_discover_at = next_at
-                            ssr.save(update_fields=['next_discover_at'])
+                            job = PrefixDiscoverJob.enqueue(data={'prefix_id': prefix.pk}, schedule_at=next_at)
+                            ssr.discover_job_id = job.pk
+                            ssr.save(update_fields=['next_discover_at', 'discover_job_id'])
                             scan_results[prefix.pk] = ssr
-                        PrefixDiscoverJob.enqueue_once(instance=prefix, schedule_at=next_at)
                         bootstrapped_discover += 1
 
         # --- Email digest recovery ---

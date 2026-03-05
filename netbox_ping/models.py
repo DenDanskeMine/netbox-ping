@@ -168,6 +168,18 @@ class SubnetScanResult(NetBoxModel):
         verbose_name='Next Discover At',
         help_text='When this prefix is next scheduled to be auto-discovered',
     )
+    scan_job_id = models.IntegerField(
+        blank=True,
+        null=True,
+        verbose_name='Scan Job ID',
+        help_text='PK of the currently scheduled PrefixScanJob (used for deduplication)',
+    )
+    discover_job_id = models.IntegerField(
+        blank=True,
+        null=True,
+        verbose_name='Discover Job ID',
+        help_text='PK of the currently scheduled PrefixDiscoverJob (used for deduplication)',
+    )
 
     class Meta:
         ordering = ['-last_scanned']
