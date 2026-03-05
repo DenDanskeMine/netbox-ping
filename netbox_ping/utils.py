@@ -84,7 +84,7 @@ def _compute_dns_sync(dns_name, is_reachable, dns_attempted, current_netbox_dns,
     return False, ''
 
 
-def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, skip_reserved=False):
+def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, skip_reserved=False, stale_check=True):
     """
     Ping all existing IPs in a prefix. Creates/updates PingResult and SubnetScanResult.
 
@@ -311,11 +311,11 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
         log.info(msg)
         print(f'[Scan] {msg}', flush=True)
 
-    # Phase 4: Stale IP detection
+    # Phase 4: Stale IP detection — skipped for manual scans
     from .models import PrefixSchedule
     stale_settings = dns_settings  # reuse the PluginSettings object passed in
-    stale_excluded = False
-    if stale_settings:
+    stale_excluded = not stale_check  # manual scans always skip stale logic
+    if stale_settings and not stale_excluded:
         try:
             prefix_schedule = PrefixSchedule.objects.get(prefix=prefix_obj)
             if prefix_schedule.stale_mode == 'exclude':
@@ -408,8 +408,9 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
                     ScanEvent.objects.bulk_create(stale_events[i:i + BATCH])
                 stale_events = []  # already saved
                 from ipam.models import IPAddress as IPAddressModel
-                deleted_count = IPAddressModel.objects.filter(pk__in=ips_to_remove).delete()[0]
-                msg = f'Auto-removed {deleted_count} stale IP(s) from NetBox'
+                ip_count = len(ips_to_remove)
+                IPAddressModel.objects.filter(pk__in=ips_to_remove).delete()
+                msg = f'Auto-removed {ip_count} stale IP(s) from NetBox'
                 log.info(msg)
                 print(f'[Scan] {msg}', flush=True)
 

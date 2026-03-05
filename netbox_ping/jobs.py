@@ -127,6 +127,7 @@ class PrefixScanJob(JobRunner):
         from .utils import scan_prefix
 
         prefix = Prefix.objects.get(pk=data['prefix_id'])
+        is_manual = bool(data.get('manual', False))
         settings = PluginSettings.load()
 
         self.logger.info(f'Starting scan of prefix {prefix.prefix}')
@@ -140,6 +141,7 @@ class PrefixScanJob(JobRunner):
             dns_settings=settings,
             job_logger=self.logger,
             skip_reserved=settings.skip_reserved_ips,
+            stale_check=not is_manual,
         )
         skipped_str = f', {result["skipped"]} skipped' if result.get('skipped') else ''
         self.logger.info(f'Scan complete: {result["up"]}/{result["total"]} hosts up{skipped_str}')
