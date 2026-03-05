@@ -106,10 +106,10 @@ def _state_badge_html(state, ts=None):
 
 
 def _fmt_ts(ts):
-    """Format a timestamp for display (short datetime)."""
+    """Format a timestamp for display (short datetime), in the configured timezone."""
     if ts is None:
         return ''
-    return ts.strftime('%b %d %H:%M')
+    return timezone.localtime(ts).strftime('%b %d %H:%M')
 
 
 
@@ -156,7 +156,10 @@ def build_digest_email(events, high_util_prefixes, include_details, period_start
     went_stale = [e for e in events if e.event_type == 'ip_went_stale']
     removed_stale = [e for e in events if e.event_type == 'ip_removed_stale']
 
-    period_fmt = f'{period_start:%Y-%m-%d %H:%M} — {period_end:%Y-%m-%d %H:%M} UTC'
+    tz_name = timezone.get_current_timezone_name()
+    local_start = timezone.localtime(period_start)
+    local_end = timezone.localtime(period_end)
+    period_fmt = f'{local_start:%Y-%m-%d %H:%M} — {local_end:%Y-%m-%d %H:%M} ({tz_name})'
 
     # Build per-IP transition data (excluding dns_changed)
     transitions = _build_ip_transitions(events)
@@ -379,7 +382,7 @@ def build_test_email():
             self.ip_address = _MockIP(ip)
             self.prefix = _MockPrefix()
             self.detail = detail
-            self.created_at = now - timedelta(minutes=minutes_ago)
+            self.created_at = timezone.localtime(now - timedelta(minutes=minutes_ago))
 
     # Sample events showing various transitions — each IP has a unique address
     sample_events = [
