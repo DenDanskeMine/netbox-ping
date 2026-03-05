@@ -278,16 +278,17 @@ class SingleIPPingJob(JobRunner):
         self.logger.info(f'{ip_str} is {status}')
 
 
-@system_job(interval=10)
+@system_job(interval=1440)
 class ScheduleRecoveryJob(JobRunner):
     """
-    Runs every 10 minutes. Lightweight recovery job that re-enqueues any
-    scheduled scans/discoveries that were lost (e.g. Redis restart without
-    persistence). Also bootstraps scheduling for newly enabled prefixes.
+    Runs daily. Lightweight recovery job that re-enqueues any scheduled
+    scans/discoveries that were lost (e.g. Redis restart without persistence).
+    Also bootstraps scheduling for newly enabled prefixes.
 
     Under normal operation this does very little — the real scheduling is
     driven by PrefixScanJob/PrefixDiscoverJob self-rescheduling at the end
     of each run, and by Django signals when settings change.
+    On every netbox-rq startup, enqueue_once already runs recovery for free.
     """
 
     class Meta:
