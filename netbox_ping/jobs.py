@@ -211,10 +211,11 @@ class PrefixDiscoverJob(JobRunner):
 
         prefix = Prefix.objects.get(pk=data['prefix_id'])
         _label_job(self.job, f'Prefix Discover: {prefix.prefix}')
+        is_manual = bool(data.get('manual', False))
 
-        # Deduplication guard: same reason as PrefixScanJob
+        # Deduplication guard: same reason as PrefixScanJob. Skip for manual runs.
         ssr_check = SubnetScanResult.objects.filter(prefix=prefix).only('discover_job_id').first()
-        if ssr_check and ssr_check.discover_job_id and ssr_check.discover_job_id != self.job.pk:
+        if not is_manual and ssr_check and ssr_check.discover_job_id and ssr_check.discover_job_id != self.job.pk:
             self.logger.info(
                 f'Discarding superseded discover of {prefix.prefix} '
                 f'(this={self.job.pk}, active={ssr_check.discover_job_id})'
