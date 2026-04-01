@@ -378,6 +378,11 @@ class PluginSettings(models.Model):
         verbose_name='Ping Timeout (seconds)',
         help_text='How long to wait for a ping response before marking as down (e.g. 0.5 for LAN, 1.0 for WAN)',
     )
+    ping_count = models.PositiveSmallIntegerField(
+        default=2,
+        verbose_name='Ping Count',
+        help_text='Number of ICMP packets per host. Higher values reduce false "down" results on busy networks (default: 2)',
+    )
     skip_reserved_ips = models.BooleanField(
         default=False,
         verbose_name='Skip Reserved IPs',

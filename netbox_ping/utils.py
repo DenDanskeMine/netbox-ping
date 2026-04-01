@@ -51,7 +51,7 @@ def _stop_ssh_master(jumphost, socket_path):
         pass
 
 
-def ping_host(ip, count=1, timeout=1, ssh_socket=None, ssh_target=None):
+def ping_host(ip, count=2, timeout=1, ssh_socket=None, ssh_target=None):
     """
     Ping a single IP address.
 
@@ -62,10 +62,10 @@ def ping_host(ip, count=1, timeout=1, ssh_socket=None, ssh_target=None):
         if ssh_socket and ssh_target:
             cmd = ['ssh', '-S', ssh_socket, '-o', 'BatchMode=yes',
                    ssh_target, f'ping -c {count} -W {timeout} {ip}']
-            proc_timeout = timeout + 10
+            proc_timeout = (timeout * count) + 10
         else:
             cmd = ['ping', '-c', str(count), '-W', str(timeout), str(ip)]
-            proc_timeout = timeout + 2
+            proc_timeout = (timeout * count) + 2
         result = subprocess.run(
             cmd,
             capture_output=True, text=True, timeout=proc_timeout,
@@ -77,8 +77,11 @@ def ping_host(ip, count=1, timeout=1, ssh_socket=None, ssh_target=None):
             if match:
                 rtt = float(match.group(1))
         return {'is_reachable': is_reachable, 'response_time_ms': rtt}
-    except (subprocess.TimeoutExpired, Exception) as e:
-        logger.debug(f'Ping failed for {ip}: {e}')
+    except subprocess.TimeoutExpired:
+        logger.debug(f'Ping timed out for {ip}')
+        return {'is_reachable': False, 'response_time_ms': None}
+    except OSError as e:
+        logger.warning(f'Ping subprocess failed for {ip}: {e}')
         return {'is_reachable': False, 'response_time_ms': None}
 
 
@@ -130,7 +133,7 @@ def _compute_dns_sync(dns_name, is_reachable, dns_attempted, current_netbox_dns,
     return False, ''
 
 
-def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, skip_reserved=False, stale_check=True, jumphost=None, fallback_to_local=True):
+def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, ping_count=2, dns_settings=None, job_logger=None, skip_reserved=False, stale_check=True, jumphost=None, fallback_to_local=True):
     """
     Ping all existing IPs in a prefix. Creates/updates PingResult and SubnetScanResult.
 
@@ -180,7 +183,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     # Phase 1: ping + DNS in parallel (no DB access)
     def _ping_ip(ip_obj):
         ip_str = str(ip_obj.address.ip)
-        ping_data = ping_host(ip_str, timeout=ping_timeout, ssh_socket=ssh_socket, ssh_target=ssh_target)
+        ping_data = ping_host(ip_str, count=ping_count, timeout=ping_timeout, ssh_socket=ssh_socket, ssh_target=ssh_target)
         dns_name = ''
         dns_attempted = False
         if perform_dns and ping_data['is_reachable']:
@@ -533,7 +536,7 @@ def scan_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100,
     return {'total': tracked, 'up': up, 'down': down, 'skipped': skipped, 'stale': stale_count, 'removed': removed, 'state_changes': state_changes}
 
 
-def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, dns_settings=None, job_logger=None, jumphost=None, fallback_to_local=True):
+def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=100, ping_timeout=1, ping_count=2, dns_settings=None, job_logger=None, jumphost=None, fallback_to_local=True):
     """
     Ping entire network range to discover new hosts not yet in NetBox.
     Creates new IPAddress + PingResult for any discovered hosts.
@@ -584,7 +587,7 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
 
     # Phase 1: ping in parallel (no DB access)
     def _check_host(host_ip):
-        return str(host_ip), ping_host(str(host_ip), timeout=ping_timeout, ssh_socket=ssh_socket, ssh_target=ssh_target)
+        return str(host_ip), ping_host(str(host_ip), count=ping_count, timeout=ping_timeout, ssh_socket=ssh_socket, ssh_target=ssh_target)
 
     ping_results = []
     total_hosts = len(hosts)

@@ -79,7 +79,7 @@
             Control concurrency, timeout, and what to do with reserved IPs.
             Raise concurrency if your system supports many open file handles.
           </p>
-          {% for field in form %}{% if field.name in 'ping_concurrency,ping_timeout,skip_reserved_ips,ping_history_max_records' %}
+          {% for field in form %}{% if field.name in 'ping_concurrency,ping_timeout,ping_count,skip_reserved_ips,ping_history_max_records' %}
           <div class="mb-3">
             <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
             {{ field }}

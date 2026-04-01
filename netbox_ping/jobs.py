@@ -183,6 +183,7 @@ class PrefixScanJob(JobRunner):
             perform_dns=settings.perform_dns_lookup,
             max_workers=settings.ping_concurrency,
             ping_timeout=settings.ping_timeout,
+            ping_count=getattr(settings, 'ping_count', 2),
             dns_settings=settings,
             job_logger=self.logger,
             skip_reserved=settings.skip_reserved_ips,
@@ -233,6 +234,7 @@ class PrefixDiscoverJob(JobRunner):
             perform_dns=settings.perform_dns_lookup,
             max_workers=settings.ping_concurrency,
             ping_timeout=settings.ping_timeout,
+            ping_count=getattr(settings, 'ping_count', 2),
             dns_settings=settings,
             job_logger=self.logger,
             jumphost=jumphost,
@@ -297,7 +299,7 @@ class SingleIPPingJob(JobRunner):
                     raise
 
         try:
-            ping_data = ping_host(ip_str, ssh_socket=ssh_socket, ssh_target=ssh_target)
+            ping_data = ping_host(ip_str, count=getattr(settings, 'ping_count', 2), timeout=settings.ping_timeout, ssh_socket=ssh_socket, ssh_target=ssh_target)
         finally:
             if ssh_socket and jumphost and socket_path:
                 _stop_ssh_master(jumphost, socket_path)
