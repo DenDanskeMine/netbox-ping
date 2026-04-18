@@ -1,5 +1,8 @@
 from django import forms
+from dcim.models import Site
+from tenancy.models import Tenant
 from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm
+from utilities.forms.fields import DynamicModelChoiceField
 from utilities.forms.rendering import FieldSet
 from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, SSHJumpHost
 
@@ -143,13 +146,13 @@ class AuditReportFilterForm(forms.Form):
         }),
         help_text='Single IP matches host; CIDR matches all IPs within the network.',
     )
-    site_id = forms.IntegerField(
+    site_id = DynamicModelChoiceField(
+        queryset=Site.objects.all(),
         required=False,
-        label='Site ID',
-        widget=forms.NumberInput(attrs={'placeholder': 'Optional', 'class': 'form-control'}),
+        label='Site',
     )
-    tenant_id = forms.IntegerField(
+    tenant_id = DynamicModelChoiceField(
+        queryset=Tenant.objects.all(),
         required=False,
-        label='Tenant ID',
-        widget=forms.NumberInput(attrs={'placeholder': 'Optional', 'class': 'form-control'}),
+        label='Tenant',
     )
