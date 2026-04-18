@@ -11,50 +11,9 @@
 </div>
 
 {% if ping_result %}
-<div class="row">
+<div class="row g-3">
   <div class="col col-md-6">
-    <div class="card">
-      <h5 class="card-header">Uptime / SLA</h5>
-      <div class="card-body">
-        <div class="row text-center g-2">
-          <div class="col-4">
-            <div class="small text-muted">Last 24h</div>
-            {% if uptime_24h is not None %}
-              <div class="display-6 text-{{ uptime_24h_color }}">{{ uptime_24h }}%</div>
-              <div class="small text-muted">{{ uptime_24h_up }} / {{ uptime_24h_total }} pings</div>
-            {% else %}
-              <div class="display-6 text-muted">—</div>
-              <div class="small text-muted">No data</div>
-            {% endif %}
-          </div>
-          <div class="col-4">
-            <div class="small text-muted">Last 7d</div>
-            {% if uptime_7d is not None %}
-              <div class="display-6 text-{{ uptime_7d_color }}">{{ uptime_7d }}%</div>
-              <div class="small text-muted">{{ uptime_7d_up }} / {{ uptime_7d_total }} pings</div>
-            {% else %}
-              <div class="display-6 text-muted">—</div>
-              <div class="small text-muted">No data</div>
-            {% endif %}
-          </div>
-          <div class="col-4">
-            <div class="small text-muted">Last 30d</div>
-            {% if uptime_30d is not None %}
-              <div class="display-6 text-{{ uptime_30d_color }}">{{ uptime_30d }}%</div>
-              <div class="small text-muted">{{ uptime_30d_up }} / {{ uptime_30d_total }} pings</div>
-            {% else %}
-              <div class="display-6 text-muted">—</div>
-              <div class="small text-muted">No data</div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="row mt-3">
-  <div class="col col-md-6">
-    <div class="card">
+    <div class="card h-100">
       <h5 class="card-header">Ping Status</h5>
       <div class="card-body">
         <table class="table table-hover attr-table">
@@ -98,6 +57,45 @@
             <td>{{ ping_result.last_checked|default:"Never" }}</td>
           </tr>
         </table>
+      </div>
+    </div>
+  </div>
+  <div class="col col-md-6">
+    <div class="card h-100">
+      <h5 class="card-header">Uptime / SLA</h5>
+      <div class="card-body">
+        <div class="row text-center g-2">
+          <div class="col-4">
+            <div class="small text-muted">Last 24h</div>
+            {% if uptime_24h is not None %}
+              <div class="display-6 text-{{ uptime_24h_color }}">{{ uptime_24h }}%</div>
+              <div class="small text-muted">{{ uptime_24h_up }} / {{ uptime_24h_total }} pings</div>
+            {% else %}
+              <div class="display-6 text-muted">—</div>
+              <div class="small text-muted">No data</div>
+            {% endif %}
+          </div>
+          <div class="col-4">
+            <div class="small text-muted">Last 7d</div>
+            {% if uptime_7d is not None %}
+              <div class="display-6 text-{{ uptime_7d_color }}">{{ uptime_7d }}%</div>
+              <div class="small text-muted">{{ uptime_7d_up }} / {{ uptime_7d_total }} pings</div>
+            {% else %}
+              <div class="display-6 text-muted">—</div>
+              <div class="small text-muted">No data</div>
+            {% endif %}
+          </div>
+          <div class="col-4">
+            <div class="small text-muted">Last 30d</div>
+            {% if uptime_30d is not None %}
+              <div class="display-6 text-{{ uptime_30d_color }}">{{ uptime_30d }}%</div>
+              <div class="small text-muted">{{ uptime_30d_up }} / {{ uptime_30d_total }} pings</div>
+            {% else %}
+              <div class="display-6 text-muted">—</div>
+              <div class="small text-muted">No data</div>
+            {% endif %}
+          </div>
+        </div>
       </div>
     </div>
   </div>
