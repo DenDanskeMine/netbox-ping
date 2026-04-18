@@ -1,5 +1,7 @@
 from django import forms
+from tenancy.models import Tenant
 from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm
+from utilities.forms.fields import DynamicModelChoiceField
 from utilities.forms.rendering import FieldSet
 from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, SSHJumpHost
 
@@ -119,3 +121,32 @@ class PrefixScheduleForm(forms.ModelForm):
             'stale_mode',
             'ping_mode', 'custom_jumphost',
         )
+
+
+class AuditReportFilterForm(forms.Form):
+    """Shared filter form for audit reports (all report types)."""
+
+    start_date = forms.DateField(
+        required=False,
+        label='Start Date',
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+    )
+    end_date = forms.DateField(
+        required=False,
+        label='End Date',
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+    )
+    ip_address = forms.CharField(
+        required=False,
+        label='IP Address / CIDR',
+        widget=forms.TextInput(attrs={
+            'placeholder': 'e.g. 10.0.0.5 or 10.0.0.0/24',
+            'class': 'form-control',
+        }),
+        help_text='Single IP matches host; CIDR matches all IPs within the network.',
+    )
+    tenant_id = DynamicModelChoiceField(
+        queryset=Tenant.objects.all(),
+        required=False,
+        label='Tenant',
+    )

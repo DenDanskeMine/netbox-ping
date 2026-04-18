@@ -1,0 +1,136 @@
+{% extends 'generic/_base.html' %}
+{% load helpers %}
+{% load form_helpers %}
+
+{% block title %}Audit Reports{% endblock %}
+
+{% block controls %}
+  <div class="btn-list">
+    {# Report type selector as button group #}
+    <div class="btn-group btn-group-sm" role="group">
+      {% for key, r in all_reports.items %}
+        <a href="?report={{ key }}{% if form_data.start_date %}&start_date={{ form_data.start_date }}{% endif %}{% if form_data.end_date %}&end_date={{ form_data.end_date }}{% endif %}{% if form_data.ip_address %}&ip_address={{ form_data.ip_address }}{% endif %}"
+           class="btn {% if key == report_key %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          {{ r.title }}
+        </a>
+      {% endfor %}
+    </div>
+    <a href="?{{ request.GET.urlencode }}&export=csv" class="btn btn-sm btn-outline-secondary">
+      <i class="mdi mdi-file-delimited-outline"></i> Export CSV
+    </a>
+    <a href="?{{ request.GET.urlencode }}&export=pdf" target="_blank" class="btn btn-sm btn-outline-secondary">
+      <i class="mdi mdi-file-pdf-box"></i> Export PDF
+    </a>
+  </div>
+{% endblock %}
+
+{% block tabs %}
+  <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="results-tab" data-bs-toggle="tab" data-bs-target="#results-pane" type="button" role="tab">
+        Results <span class="badge text-bg-secondary">{{ row_count }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link{% if filters %} position-relative{% endif %}" id="filters-tab" data-bs-toggle="tab" data-bs-target="#filters-pane" type="button" role="tab">
+        Filters
+        {% if filters %}
+          <span class="badge text-bg-primary">{{ filters|length }}</span>
+        {% endif %}
+      </button>
+    </li>
+  </ul>
+{% endblock %}
+
+{% block content %}
+<div class="tab-content">
+
+  {# ── Results Tab ── #}
+  <div class="tab-pane show active" id="results-pane" role="tabpanel">
+
+    {# Report description bar #}
+    <div class="card mb-2">
+      <div class="card-body py-2 d-flex align-items-center justify-content-between">
+        <div>
+          <strong>{{ report.title }}</strong>
+          <span class="text-muted ms-2 small">{{ report.description }}</span>
+        </div>
+        {% if filters %}
+        <div class="small">
+          {% if filters.start %}<span class="badge text-bg-primary ms-1">From {{ filters.start|date:"Y-m-d" }}</span>{% endif %}
+          {% if filters.end %}<span class="badge text-bg-primary ms-1">To {{ filters.end|date:"Y-m-d" }}</span>{% endif %}
+          {% if filters.ip_address %}<span class="badge text-bg-info ms-1">IP: {{ filters.ip_address }}</span>{% endif %}
+          {% if filters.tenant_id %}<span class="badge text-bg-info ms-1">Tenant: {{ filters.tenant_id }}</span>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Results table — edge-to-edge card #}
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              {% for header in report.header_labels %}
+                <th class="text-uppercase small text-muted" style="letter-spacing:0.5px;font-weight:600;font-size:.7rem;">{{ header }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                {% for key in report.field_keys %}
+                  <td>{{ row|get_item:key }}</td>
+                {% endfor %}
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="{{ report.columns|length }}" class="text-center text-muted py-5">
+                  <div><i class="mdi mdi-database-off-outline" style="font-size:2rem;opacity:0.4;"></i></div>
+                  <div class="mt-2">No results for the selected filters.</div>
+                  <div class="small mt-1">Try expanding the date range or clearing filters.</div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if rows %}
+      <div class="card-footer text-muted small d-flex justify-content-between">
+        <span>Showing {{ row_count }} result{{ row_count|pluralize }}</span>
+        <span>
+          {% if filters.start and filters.end %}
+            Window: {{ filters.start|date:"Y-m-d" }} → {{ filters.end|date:"Y-m-d" }}
+          {% endif %}
+        </span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Filters Tab ── #}
+  <div class="tab-pane" id="filters-pane" role="tabpanel">
+    <form method="get" action="">
+      <input type="hidden" name="report" value="{{ report_key }}">
+      <div class="card">
+        <div class="card-body">
+          {% render_field form.start_date %}
+          {% render_field form.end_date %}
+          {% render_field form.ip_address %}
+          {% render_field form.tenant_id %}
+        </div>
+      </div>
+      <div class="btn-float-group-right mt-2">
+        <a href="?report={{ report_key }}" class="btn btn-outline-danger">
+          <i class="mdi mdi-backspace"></i> Reset
+        </a>
+        <button type="submit" class="btn btn-primary">
+          <i class="mdi mdi-magnify"></i> Search
+        </button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

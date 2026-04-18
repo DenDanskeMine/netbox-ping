@@ -28,6 +28,15 @@ PINGRESULT_HISTORY_TEMPLATE = '''
 '''
 
 
+def _uptime_cell(value, record):
+    """Render uptime % as a colored badge."""
+    from django.utils.safestring import mark_safe
+    if value is None:
+        return mark_safe('<span class="text-muted">—</span>')
+    color = record.uptime_color(value)
+    return mark_safe(f'<span class="badge text-bg-{color}">{value}%</span>')
+
+
 class PingResultTable(NetBoxTable):
     """Table for the PingResult list view."""
 
@@ -55,6 +64,26 @@ class PingResultTable(NetBoxTable):
     last_checked = tables.DateTimeColumn(
         verbose_name='Last Checked',
     )
+    uptime_24h = tables.Column(
+        accessor='uptime_24h',
+        verbose_name='Uptime 24h',
+        orderable=False,
+    )
+    uptime_7d = tables.Column(
+        accessor='uptime_7d',
+        verbose_name='Uptime 7d',
+        orderable=False,
+    )
+    uptime_30d = tables.Column(
+        accessor='uptime_30d',
+        verbose_name='Uptime 30d',
+        orderable=False,
+    )
+    uptime_all_time = tables.Column(
+        accessor='uptime_all_time',
+        verbose_name='Uptime All-time',
+        orderable=False,
+    )
     history = columns.TemplateColumn(
         template_code=PINGRESULT_HISTORY_TEMPLATE,
         verbose_name='History',
@@ -64,16 +93,30 @@ class PingResultTable(NetBoxTable):
         actions=('delete',),
     )
 
+    def render_uptime_24h(self, value, record):
+        return _uptime_cell(value, record)
+
+    def render_uptime_7d(self, value, record):
+        return _uptime_cell(value, record)
+
+    def render_uptime_30d(self, value, record):
+        return _uptime_cell(value, record)
+
+    def render_uptime_all_time(self, value, record):
+        return _uptime_cell(value, record)
+
     class Meta(NetBoxTable.Meta):
         model = PingResult
         fields = (
             'pk', 'id', 'ip_address', 'status', 'response_time_ms',
-            'dns_name', 'consecutive_down_count', 'last_seen', 'last_checked',
-            'history', 'actions',
+            'dns_name', 'consecutive_down_count',
+            'uptime_24h', 'uptime_7d', 'uptime_30d', 'uptime_all_time',
+            'last_seen', 'last_checked', 'history', 'actions',
         )
         default_columns = (
             'ip_address', 'status', 'response_time_ms',
-            'dns_name', 'consecutive_down_count', 'last_seen', 'last_checked',
+            'dns_name', 'uptime_24h', 'uptime_7d', 'uptime_all_time',
+            'consecutive_down_count', 'last_seen', 'last_checked',
             'history',
         )
 

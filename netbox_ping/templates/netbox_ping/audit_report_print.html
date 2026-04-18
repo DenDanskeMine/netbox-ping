@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+{% load helpers %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ report.title }} — NetBox Ping Audit Report</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+      font-size: 9.5pt;
+      color: #1a1a1a;
+      margin: 0;
+      padding: 20px;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 3px solid #0d6efd;
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+    }
+    .report-header .brand {
+      font-size: 9pt;
+      color: #6c757d;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .report-header h1 {
+      font-size: 18pt;
+      margin: 0;
+      color: #0d6efd;
+      font-weight: 700;
+    }
+    .report-header .tagline {
+      font-size: 9pt;
+      color: #495057;
+      margin-top: 2px;
+    }
+    .report-header .generated {
+      font-size: 8.5pt;
+      color: #6c757d;
+      text-align: right;
+      line-height: 1.4;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      margin: 0 0 18px 0;
+      font-size: 8.5pt;
+      border: 1px solid #dee2e6;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .meta-grid > div {
+      padding: 6px 10px;
+      border-right: 1px solid #dee2e6;
+      border-bottom: 1px solid #dee2e6;
+    }
+    .meta-grid > div:nth-child(4n) { border-right: none; }
+    .meta-grid > div:nth-last-child(-n+4) { border-bottom: none; }
+    .meta-grid dt { color: #6c757d; margin: 0 0 2px 0; font-weight: normal; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.3px; }
+    .meta-grid dd { margin: 0; font-weight: 600; color: #212529; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+    }
+    thead { display: table-header-group; }
+    th {
+      text-align: left;
+      background: #f8f9fa;
+      border-top: 1px solid #0d6efd;
+      border-bottom: 2px solid #0d6efd;
+      padding: 7px 10px;
+      font-weight: 600;
+      color: #0d6efd;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    td {
+      border-bottom: 1px solid #e9ecef;
+      padding: 6px 10px;
+      vertical-align: top;
+    }
+    tbody tr:nth-child(even) { background: #fbfcfd; }
+
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: #adb5bd;
+      font-style: italic;
+    }
+
+    .footer {
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px solid #dee2e6;
+      font-size: 7.5pt;
+      color: #6c757d;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    @page {
+      size: A4 landscape;
+      margin: 12mm 10mm 12mm 10mm;
+      @bottom-right {
+        content: "Page " counter(page) " / " counter(pages);
+        font-size: 8pt;
+        color: #6c757d;
+      }
+      @bottom-left {
+        content: "NetBox Ping — {{ report.title }}";
+        font-size: 8pt;
+        color: #6c757d;
+      }
+    }
+
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+    }
+
+    .preview-banner {
+      background: #fff3cd;
+      border: 1px solid #ffda6a;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      border-radius: 4px;
+      font-size: 9pt;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="preview-banner no-print">
+    <strong>Print preview.</strong>
+    Your browser's print dialog should have opened.
+    If not, press <kbd>Ctrl</kbd>+<kbd>P</kbd> (or <kbd>Cmd</kbd>+<kbd>P</kbd>) and select <em>Save as PDF</em>.
+  </div>
+
+  <div class="report-header">
+    <div>
+      <div class="brand">NetBox Ping — Audit Report</div>
+      <h1>{{ report.title }}</h1>
+      <div class="tagline">{{ report.description }}</div>
+    </div>
+    <div class="generated">
+      <div><strong>Generated</strong></div>
+      <div>{% now "Y-m-d H:i:s" %}</div>
+    </div>
+  </div>
+
+  <dl class="meta-grid">
+    <div>
+      <dt>Start Date</dt>
+      <dd>{% if filters.start %}{{ filters.start|date:"Y-m-d H:i" }}{% else %}—{% endif %}</dd>
+    </div>
+    <div>
+      <dt>End Date</dt>
+      <dd>{% if filters.end %}{{ filters.end|date:"Y-m-d H:i" }}{% else %}—{% endif %}</dd>
+    </div>
+    <div>
+      <dt>Result Count</dt>
+      <dd>{{ row_count }}</dd>
+    </div>
+    <div>
+      <dt>Filters</dt>
+      <dd>
+        {% if filters.ip_address %}IP: {{ filters.ip_address }}{% endif %}
+        {% if filters.site_id %}Site: {{ filters.site_id }}{% endif %}
+        {% if filters.tenant_id %}Tenant: {{ filters.tenant_id }}{% endif %}
+        {% if not filters.ip_address and not filters.site_id and not filters.tenant_id %}None{% endif %}
+      </dd>
+    </div>
+  </dl>
+
+  <table>
+    <thead>
+      <tr>
+        {% for header in report.header_labels %}
+          <th>{{ header }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          {% for key in report.field_keys %}
+            <td>{{ row|get_item:key }}</td>
+          {% endfor %}
+        </tr>
+      {% empty %}
+        <tr>
+          <td class="empty" colspan="{{ report.columns|length }}">No data in the selected date range.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <div>Confidential — generated by the NetBox Ping plugin.</div>
+    <div>Audit trail preserved — original records remain in source of truth.</div>
+  </div>
+
+  {% if auto_print %}
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() { window.print(); }, 300);
+    });
+  </script>
+  {% endif %}
+
+</body>
+</html>
