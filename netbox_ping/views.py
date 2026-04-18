@@ -157,11 +157,25 @@ class IPAddressPingTab(generic.ObjectView):
         history_table = PingHistoryTable(history, orderable=False)
         dns_history = DnsHistory.objects.filter(ip_address=instance)[:50]
         dns_history_table = DnsHistoryTable(dns_history, orderable=False)
-        return {
+
+        # Uptime / SLA stats
+        ctx = {
             'ping_result': ping_result,
             'history_table': history_table,
             'dns_history_table': dns_history_table,
         }
+        if ping_result:
+            for label, hours in [('24h', 24), ('7d', 24 * 7), ('30d', 24 * 30)]:
+                stats = ping_result.uptime_percentage(hours=hours)
+                if stats:
+                    ctx[f'uptime_{label}'] = stats['percentage']
+                    ctx[f'uptime_{label}_up'] = stats['up']
+                    ctx[f'uptime_{label}_total'] = stats['total']
+                    ctx[f'uptime_{label}_color'] = ping_result.uptime_color(stats['percentage'])
+                else:
+                    ctx[f'uptime_{label}'] = None
+                    ctx[f'uptime_{label}_color'] = 'secondary'
+        return ctx
 
 
 # ─── Action Views (trigger scans) ──────────────────────────────

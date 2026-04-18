@@ -131,6 +131,60 @@ class PingResult(NetBoxModel):
             return 'warning'
         return 'success' if self.is_reachable else 'danger'
 
+    def uptime_percentage(self, hours=24):
+        """Calculate uptime % over the given window (hours) from PingHistory.
+
+        Returns a dict: {'percentage': float, 'up': int, 'total': int} or None
+        if no history exists in the window.
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+
+        start = timezone.now() - timedelta(hours=hours)
+        records = PingHistory.objects.filter(
+            ip_address=self.ip_address,
+            checked_at__gte=start,
+        )
+        total = records.count()
+        if total == 0:
+            return None
+        up = records.filter(is_reachable=True).count()
+        return {
+            'percentage': round(up / total * 100, 2),
+            'up': up,
+            'total': total,
+        }
+
+    @property
+    def uptime_24h(self):
+        """Uptime percentage over last 24 hours (None if no data)."""
+        stats = self.uptime_percentage(hours=24)
+        return stats['percentage'] if stats else None
+
+    @property
+    def uptime_7d(self):
+        """Uptime percentage over last 7 days (None if no data)."""
+        stats = self.uptime_percentage(hours=24 * 7)
+        return stats['percentage'] if stats else None
+
+    @property
+    def uptime_30d(self):
+        """Uptime percentage over last 30 days (None if no data)."""
+        stats = self.uptime_percentage(hours=24 * 30)
+        return stats['percentage'] if stats else None
+
+    def uptime_color(self, percentage):
+        """Return a bootstrap color class for an uptime percentage."""
+        if percentage is None:
+            return 'secondary'
+        if percentage >= 99.9:
+            return 'success'
+        if percentage >= 99.0:
+            return 'info'
+        if percentage >= 95.0:
+            return 'warning'
+        return 'danger'
+
 
 class SubnetScanResult(NetBoxModel):
     """Stores per-prefix scan summary."""
