@@ -722,8 +722,6 @@ class AuditReportView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 )
             if cd.get('ip_address'):
                 filters['ip_address'] = cd['ip_address']
-            if cd.get('site_id'):
-                filters['site_id'] = cd['site_id'].pk if hasattr(cd['site_id'], 'pk') else cd['site_id']
             if cd.get('tenant_id'):
                 filters['tenant_id'] = cd['tenant_id'].pk if hasattr(cd['tenant_id'], 'pk') else cd['tenant_id']
 

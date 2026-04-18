@@ -60,7 +60,6 @@
           {% if filters.start %}<span class="badge text-bg-primary ms-1">From {{ filters.start|date:"Y-m-d" }}</span>{% endif %}
           {% if filters.end %}<span class="badge text-bg-primary ms-1">To {{ filters.end|date:"Y-m-d" }}</span>{% endif %}
           {% if filters.ip_address %}<span class="badge text-bg-info ms-1">IP: {{ filters.ip_address }}</span>{% endif %}
-          {% if filters.site_id %}<span class="badge text-bg-info ms-1">Site: {{ filters.site_id }}</span>{% endif %}
           {% if filters.tenant_id %}<span class="badge text-bg-info ms-1">Tenant: {{ filters.tenant_id }}</span>{% endif %}
         </div>
         {% endif %}
@@ -119,7 +118,6 @@
           {% render_field form.start_date %}
           {% render_field form.end_date %}
           {% render_field form.ip_address %}
-          {% render_field form.site_id %}
           {% render_field form.tenant_id %}
         </div>
       </div>

@@ -1,5 +1,4 @@
 from django import forms
-from dcim.models import Site
 from tenancy.models import Tenant
 from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm
 from utilities.forms.fields import DynamicModelChoiceField
@@ -145,11 +144,6 @@ class AuditReportFilterForm(forms.Form):
             'class': 'form-control',
         }),
         help_text='Single IP matches host; CIDR matches all IPs within the network.',
-    )
-    site_id = DynamicModelChoiceField(
-        queryset=Site.objects.all(),
-        required=False,
-        label='Site',
     )
     tenant_id = DynamicModelChoiceField(
         queryset=Tenant.objects.all(),

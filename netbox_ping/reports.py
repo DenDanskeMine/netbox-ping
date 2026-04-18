@@ -110,11 +110,6 @@ class SLAReport(BaseReport):
 
         # Get PingResult for dns_name and last_seen + apply scope filters
         qs = PingResult.objects.filter(ip_address_id__in=ip_ids).select_related('ip_address')
-        if filters.get('site_id'):
-            qs = qs.filter(
-                Q(ip_address__assigned_object_id__in=_interface_ids_for_site(filters['site_id']))
-                | Q(ip_address__vrf__isnull=False)  # best effort
-            )
         if filters.get('tenant_id'):
             qs = qs.filter(ip_address__tenant_id=filters['tenant_id'])
         qs = _apply_ip_filter(qs, filters.get('ip_address'))
@@ -279,8 +274,6 @@ class CoverageReport(BaseReport):
             prefixes = prefixes.filter(last_scanned__gte=start)
         if end:
             prefixes = prefixes.filter(last_scanned__lte=end)
-        if filters.get('site_id'):
-            prefixes = prefixes.filter(prefix__site_id=filters['site_id'])
         if filters.get('tenant_id'):
             prefixes = prefixes.filter(prefix__tenant_id=filters['tenant_id'])
         for p in prefixes:
@@ -309,13 +302,6 @@ class CoverageReport(BaseReport):
             'detail': obj['detail'],
             'utilization': f'{obj["utilization"]}%' if obj['utilization'] is not None else '—',
         }
-
-
-def _interface_ids_for_site(site_id):
-    """Best-effort: return interface ids for a site (for SLA scope filter)."""
-    from django.contrib.contenttypes.models import ContentType
-    from dcim.models import Interface
-    return Interface.objects.filter(device__site_id=site_id).values_list('id', flat=True)
 
 
 REPORT_REGISTRY = {
