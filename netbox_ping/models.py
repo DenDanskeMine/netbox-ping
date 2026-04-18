@@ -102,6 +102,16 @@ class PingResult(NetBoxModel):
         verbose_name='Discovered At',
         help_text='When this IP was first auto-discovered',
     )
+    uptime_reset_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Uptime Reset At',
+        help_text=(
+            'When uptime statistics were last reset. Ping history '
+            'before this timestamp is preserved but excluded from '
+            'uptime calculations. Used when an IP is reassigned.'
+        ),
+    )
 
     class Meta:
         ordering = ['-last_checked']
@@ -131,20 +141,29 @@ class PingResult(NetBoxModel):
             return 'warning'
         return 'success' if self.is_reachable else 'danger'
 
-    def uptime_percentage(self, hours=24):
+    def uptime_percentage(self, hours=None):
         """Calculate uptime % over the given window (hours) from PingHistory.
 
-        Returns a dict: {'percentage': float, 'up': int, 'total': int} or None
-        if no history exists in the window.
-        """
-        from django.utils import timezone
-        from datetime import timedelta
+        If hours is None, counts all-time (since uptime_reset_at or since
+        the first PingHistory record).
 
-        start = timezone.now() - timedelta(hours=hours)
-        records = PingHistory.objects.filter(
-            ip_address=self.ip_address,
-            checked_at__gte=start,
-        )
+        The uptime_reset_at timestamp acts as a floor — history before it
+        is preserved (audit trail) but excluded from calculations. This
+        lets operators "reset" an IP's SLA without losing history.
+
+        Returns a dict: {'percentage': float, 'up': int, 'total': int} or
+        None if no history exists in the effective window.
+        """
+        start = timezone.now() - timedelta(hours=hours) if hours else None
+
+        # Floor start at uptime_reset_at if set (and later than start)
+        if self.uptime_reset_at and (start is None or self.uptime_reset_at > start):
+            start = self.uptime_reset_at
+
+        records = PingHistory.objects.filter(ip_address=self.ip_address)
+        if start is not None:
+            records = records.filter(checked_at__gte=start)
+
         total = records.count()
         if total == 0:
             return None
@@ -172,6 +191,21 @@ class PingResult(NetBoxModel):
         """Uptime percentage over last 30 days (None if no data)."""
         stats = self.uptime_percentage(hours=24 * 30)
         return stats['percentage'] if stats else None
+
+    @property
+    def uptime_all_time(self):
+        """Uptime percentage since monitoring began (or last reset).
+
+        Counts all PingHistory records since uptime_reset_at (or since
+        the first record if never reset). None if no records exist.
+        """
+        stats = self.uptime_percentage(hours=None)
+        return stats['percentage'] if stats else None
+
+    @property
+    def last_reset(self):
+        """Return the most recent UptimeReset record, if any."""
+        return self.ip_address.uptime_resets.order_by('-reset_at').first()
 
     def uptime_color(self, percentage):
         """Return a bootstrap color class for an uptime percentage."""
@@ -307,6 +341,63 @@ class DnsHistory(models.Model):
 
     def __str__(self):
         return f'{self.ip_address} — "{self.old_dns_name}" → "{self.new_dns_name}"'
+
+
+class UptimeReset(models.Model):
+    """Audit log for uptime counter resets.
+
+    Records who reset uptime statistics, when, and why. Captures the
+    uptime values at the moment of reset so auditors can see the
+    "before" state without replaying history. PingHistory records are
+    NEVER deleted on reset — this table exists purely to document and
+    justify each reset event.
+    """
+
+    ip_address = models.ForeignKey(
+        to='ipam.IPAddress',
+        on_delete=models.CASCADE,
+        related_name='uptime_resets',
+    )
+    reset_by = models.ForeignKey(
+        to='users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='netbox_ping_uptime_resets',
+        verbose_name='Reset By',
+    )
+    reset_at = models.DateTimeField(auto_now_add=True, verbose_name='Reset At')
+    reason = models.TextField(
+        verbose_name='Reason',
+        help_text='Required — explains why the reset was performed (audit trail)',
+    )
+    previous_reset_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Previous Reset',
+        help_text='The uptime_reset_at value that was replaced (may be null)',
+    )
+    ping_count_at_reset = models.IntegerField(
+        default=0,
+        verbose_name='Ping Count At Reset',
+        help_text='Number of PingHistory records for this IP at reset time',
+    )
+    uptime_24h_at_reset = models.FloatField(null=True, blank=True)
+    uptime_7d_at_reset = models.FloatField(null=True, blank=True)
+    uptime_30d_at_reset = models.FloatField(null=True, blank=True)
+    uptime_all_time_at_reset = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-reset_at']
+        verbose_name = 'Uptime Reset'
+        verbose_name_plural = 'Uptime Resets'
+        indexes = [
+            models.Index(fields=['ip_address', '-reset_at']),
+        ]
+
+    def __str__(self):
+        user = self.reset_by.username if self.reset_by else 'unknown'
+        return f'{self.ip_address} reset by {user} at {self.reset_at}'
 
 
 class ScanEvent(models.Model):

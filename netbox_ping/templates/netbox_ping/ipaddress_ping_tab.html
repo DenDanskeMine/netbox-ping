@@ -3,12 +3,33 @@
 
 {% block content %}
 <div class="row mb-3">
-  <div class="col">
+  <div class="col d-flex gap-2 flex-wrap">
     <a href="{% url 'plugins:netbox_ping:ip_ping' pk=object.pk %}" class="btn btn-primary">
       <span class="mdi mdi-lan-check" aria-hidden="true"></span> Ping Now
     </a>
+    {% if ping_result and perms.netbox_ping.change_pingresult %}
+    <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#resetUptimeModal">
+      <span class="mdi mdi-restart" aria-hidden="true"></span> Reset Uptime
+    </button>
+    {% endif %}
   </div>
 </div>
+
+{% if last_reset %}
+<div class="alert alert-warning d-flex align-items-start gap-2 py-2 mb-3">
+  <span class="mdi mdi-history mt-1"></span>
+  <div class="flex-grow-1 small">
+    <strong>Uptime was reset</strong>
+    on {{ last_reset.reset_at|date:"Y-m-d H:i" }}
+    by <strong>{{ last_reset.reset_by.username|default:"unknown" }}</strong>.
+    Reason: <em>"{{ last_reset.reason }}"</em>
+    <div class="text-muted">
+      All uptime percentages count from this point forward.
+      {{ last_reset.ping_count_at_reset }} historical ping record{{ last_reset.ping_count_at_reset|pluralize }} preserved.
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% if ping_result %}
 <div class="row g-3">
@@ -31,6 +52,17 @@
               {% endif %}
               {% if ping_result.is_new %}
                 <span class="badge text-bg-info">New</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Uptime</th>
+            <td>
+              {% if uptime_all_time is not None %}
+                <span class="badge text-bg-{{ uptime_all_time_color }}">{{ uptime_all_time }}%</span>
+                <span class="text-muted small">({{ uptime_all_time_up }} / {{ uptime_all_time_total }} pings all-time)</span>
+              {% else %}
+                <span class="text-muted">No data</span>
               {% endif %}
             </td>
           </tr>
@@ -65,31 +97,41 @@
       <h5 class="card-header">Uptime / SLA</h5>
       <div class="card-body">
         <div class="row text-center g-2">
-          <div class="col-4">
+          <div class="col-3">
             <div class="small text-muted">Last 24h</div>
             {% if uptime_24h is not None %}
               <div class="display-6 text-{{ uptime_24h_color }}">{{ uptime_24h }}%</div>
-              <div class="small text-muted">{{ uptime_24h_up }} / {{ uptime_24h_total }} pings</div>
+              <div class="small text-muted">{{ uptime_24h_up }} / {{ uptime_24h_total }}</div>
             {% else %}
               <div class="display-6 text-muted">—</div>
               <div class="small text-muted">No data</div>
             {% endif %}
           </div>
-          <div class="col-4">
+          <div class="col-3">
             <div class="small text-muted">Last 7d</div>
             {% if uptime_7d is not None %}
               <div class="display-6 text-{{ uptime_7d_color }}">{{ uptime_7d }}%</div>
-              <div class="small text-muted">{{ uptime_7d_up }} / {{ uptime_7d_total }} pings</div>
+              <div class="small text-muted">{{ uptime_7d_up }} / {{ uptime_7d_total }}</div>
             {% else %}
               <div class="display-6 text-muted">—</div>
               <div class="small text-muted">No data</div>
             {% endif %}
           </div>
-          <div class="col-4">
+          <div class="col-3">
             <div class="small text-muted">Last 30d</div>
             {% if uptime_30d is not None %}
               <div class="display-6 text-{{ uptime_30d_color }}">{{ uptime_30d }}%</div>
-              <div class="small text-muted">{{ uptime_30d_up }} / {{ uptime_30d_total }} pings</div>
+              <div class="small text-muted">{{ uptime_30d_up }} / {{ uptime_30d_total }}</div>
+            {% else %}
+              <div class="display-6 text-muted">—</div>
+              <div class="small text-muted">No data</div>
+            {% endif %}
+          </div>
+          <div class="col-3">
+            <div class="small text-muted">All time</div>
+            {% if uptime_all_time is not None %}
+              <div class="display-6 text-{{ uptime_all_time_color }}">{{ uptime_all_time }}%</div>
+              <div class="small text-muted">{{ uptime_all_time_up }} / {{ uptime_all_time_total }}</div>
             {% else %}
               <div class="display-6 text-muted">—</div>
               <div class="small text-muted">No data</div>
@@ -106,7 +148,7 @@
 </div>
 {% endif %}
 
-{% if history_table.rows|length or dns_history_table.rows|length %}
+{% if history_table.rows|length or dns_history_table.rows|length or reset_history %}
 <div class="row mt-3">
   <div class="col">
     <div class="card">
@@ -126,6 +168,14 @@
             </button>
           </li>
           {% endif %}
+          {% if reset_history %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link{% if not history_table.rows|length and not dns_history_table.rows|length %} active{% endif %}" id="reset-history-tab" data-bs-toggle="tab" data-bs-target="#reset-history" type="button" role="tab">
+              <span class="mdi mdi-restart"></span> Reset Audit Log
+              <span class="badge text-bg-secondary ms-1">{{ reset_history|length }}</span>
+            </button>
+          </li>
+          {% endif %}
         </ul>
       </div>
       <div class="card-body tab-content">
@@ -139,8 +189,116 @@
           {% render_table dns_history_table %}
         </div>
         {% endif %}
+        {% if reset_history %}
+        <div class="tab-pane fade{% if not history_table.rows|length and not dns_history_table.rows|length %} show active{% endif %} table-responsive" id="reset-history" role="tabpanel">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>Reset At</th>
+                <th>By</th>
+                <th>Reason</th>
+                <th>Ping Count</th>
+                <th>24h %</th>
+                <th>7d %</th>
+                <th>30d %</th>
+                <th>All-time %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in reset_history %}
+              <tr>
+                <td>{{ r.reset_at|date:"Y-m-d H:i:s" }}</td>
+                <td>{{ r.reset_by.username|default:"—" }}</td>
+                <td>{{ r.reason }}</td>
+                <td>{{ r.ping_count_at_reset }}</td>
+                <td>{{ r.uptime_24h_at_reset|default:"—" }}{% if r.uptime_24h_at_reset is not None %}%{% endif %}</td>
+                <td>{{ r.uptime_7d_at_reset|default:"—" }}{% if r.uptime_7d_at_reset is not None %}%{% endif %}</td>
+                <td>{{ r.uptime_30d_at_reset|default:"—" }}{% if r.uptime_30d_at_reset is not None %}%{% endif %}</td>
+                <td>{{ r.uptime_all_time_at_reset|default:"—" }}{% if r.uptime_all_time_at_reset is not None %}%{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
       </div>
     </div>
+  </div>
+</div>
+{% endif %}
+
+{# Reset Uptime Confirmation Modal #}
+{% if ping_result and perms.netbox_ping.change_pingresult %}
+<div class="modal fade" id="resetUptimeModal" tabindex="-1" aria-labelledby="resetUptimeLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="post" action="{% url 'plugins:netbox_ping:ip_reset_uptime' pk=object.pk %}">
+      {% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="resetUptimeLabel">
+            <span class="mdi mdi-alert-outline text-warning"></span> Reset Uptime Statistics
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info mb-3">
+            <strong>What this does:</strong>
+            <ul class="mb-0 mt-1">
+              <li>Sets a new <strong>uptime calculation start point</strong> to now</li>
+              <li>All uptime percentages (24h, 7d, 30d, all-time) will count from this moment forward</li>
+              <li>The <code>consecutive_down_count</code> counter is reset to 0</li>
+            </ul>
+          </div>
+
+          <div class="alert alert-success mb-3">
+            <strong>What is preserved (audit integrity):</strong>
+            <ul class="mb-0 mt-1">
+              <li><strong>All PingHistory records remain</strong> — nothing is deleted</li>
+              <li>This reset action is logged with your username, timestamp, and reason</li>
+              <li>Previous uptime values are snapshotted for the audit trail</li>
+              <li>NetBox's change log also captures this change independently</li>
+            </ul>
+          </div>
+
+          <div class="alert alert-warning mb-3">
+            <strong>When to use this:</strong>
+            An IP address has been reassigned to a different device (e.g. old VM decommissioned, new
+            device took over the IP). Resetting avoids polluting SLA reports with downtime from the
+            previous owner.
+          </div>
+
+          <div class="mb-2">
+            <label for="reset-reason" class="form-label">
+              <strong>Reason</strong> <span class="text-danger">*</span>
+              <small class="text-muted">(required for audit compliance, minimum 5 characters)</small>
+            </label>
+            <textarea
+              id="reset-reason"
+              name="reason"
+              class="form-control"
+              rows="3"
+              required
+              minlength="5"
+              placeholder="e.g. IP 10.0.0.5 reassigned from old-vm-01 (decommissioned) to new-vm-42"
+            ></textarea>
+          </div>
+
+          <div class="form-text">
+            <span class="mdi mdi-information-outline"></span>
+            This reset will be visible in the <strong>Reset Audit Log</strong> tab below,
+            accessible via the REST API at
+            <code>/api/plugins/netbox-ping/uptime-resets/</code>,
+            and in NetBox's change log for this IP address.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">
+            <span class="mdi mdi-restart"></span> Reset Uptime
+          </button>
+        </div>
+      </div>
+    </form>
   </div>
 </div>
 {% endif %}

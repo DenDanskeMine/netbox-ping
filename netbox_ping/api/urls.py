@@ -7,5 +7,6 @@ router = NetBoxRouter()
 router.register('ping-results', views.PingResultViewSet)
 router.register('ping-history', views.PingHistoryViewSet)
 router.register('scan-results', views.SubnetScanResultViewSet)
+router.register('uptime-resets', views.UptimeResetViewSet, basename='uptimereset')
 
 urlpatterns = router.urls

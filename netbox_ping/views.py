@@ -9,7 +9,10 @@ from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
 from ipam.models import Prefix, IPAddress
 
-from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, DnsHistory, SSHJumpHost
+from .models import (
+    PingResult, PingHistory, SubnetScanResult, PluginSettings,
+    PrefixSchedule, DnsHistory, SSHJumpHost, UptimeReset,
+)
 from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable, DnsHistoryTable
 from .filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet
 from .forms import PingResultFilterForm, PingHistoryFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm, SSHJumpHostForm
@@ -165,7 +168,8 @@ class IPAddressPingTab(generic.ObjectView):
             'dns_history_table': dns_history_table,
         }
         if ping_result:
-            for label, hours in [('24h', 24), ('7d', 24 * 7), ('30d', 24 * 30)]:
+            windows = [('24h', 24), ('7d', 24 * 7), ('30d', 24 * 30), ('all_time', None)]
+            for label, hours in windows:
                 stats = ping_result.uptime_percentage(hours=hours)
                 if stats:
                     ctx[f'uptime_{label}'] = stats['percentage']
@@ -175,6 +179,12 @@ class IPAddressPingTab(generic.ObjectView):
                 else:
                     ctx[f'uptime_{label}'] = None
                     ctx[f'uptime_{label}_color'] = 'secondary'
+            # Last reset event (for banner)
+            ctx['last_reset'] = ping_result.last_reset
+            # Full reset history (shown in collapsible section)
+            ctx['reset_history'] = UptimeReset.objects.filter(
+                ip_address=instance,
+            ).select_related('reset_by').order_by('-reset_at')[:20]
         return ctx
 
 
@@ -341,6 +351,78 @@ class IPPingSingleActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
         else:
             messages.warning(request, f'{ip_str} is down')
 
+        return redirect(ip_obj.get_absolute_url() + 'ping/')
+
+
+class IPUptimeResetActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Reset uptime statistics for an IP address.
+
+    Creates an UptimeReset audit record (WHO, WHEN, WHY), snapshots the
+    current uptime values, and sets PingResult.uptime_reset_at so future
+    calculations start fresh. PingHistory records are preserved intact.
+
+    Used when an IP is reassigned to a different device — avoids
+    polluting SLA reports with downtime from the previous owner.
+    """
+    permission_required = 'netbox_ping.change_pingresult'
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        from django.utils import timezone
+
+        ip_obj = get_object_or_404(IPAddress, pk=pk)
+        reason = (request.POST.get('reason') or '').strip()
+
+        if len(reason) < 5:
+            messages.error(
+                request,
+                'A reason of at least 5 characters is required when resetting '
+                'uptime. This is recorded in the audit log.',
+            )
+            return redirect(ip_obj.get_absolute_url() + 'ping/')
+
+        try:
+            ping_result = PingResult.objects.get(ip_address=ip_obj)
+        except PingResult.DoesNotExist:
+            messages.warning(
+                request,
+                'No ping data exists for this IP yet — nothing to reset.',
+            )
+            return redirect(ip_obj.get_absolute_url() + 'ping/')
+
+        # Snapshot current values BEFORE reset (for audit trail)
+        previous_reset_at = ping_result.uptime_reset_at
+        ping_count = PingHistory.objects.filter(ip_address=ip_obj).count()
+        snap_24h = ping_result.uptime_24h
+        snap_7d = ping_result.uptime_7d
+        snap_30d = ping_result.uptime_30d
+        snap_all = ping_result.uptime_all_time
+
+        # Create audit record
+        UptimeReset.objects.create(
+            ip_address=ip_obj,
+            reset_by=request.user if request.user.is_authenticated else None,
+            reason=reason,
+            previous_reset_at=previous_reset_at,
+            ping_count_at_reset=ping_count,
+            uptime_24h_at_reset=snap_24h,
+            uptime_7d_at_reset=snap_7d,
+            uptime_30d_at_reset=snap_30d,
+            uptime_all_time_at_reset=snap_all,
+        )
+
+        # Apply reset to PingResult — NetBoxModel change log captures this
+        ping_result.snapshot()
+        ping_result.uptime_reset_at = timezone.now()
+        ping_result.consecutive_down_count = 0
+        ping_result.save()
+
+        messages.success(
+            request,
+            f'Uptime statistics reset for {ip_obj}. '
+            f'Ping history preserved ({ping_count} records). '
+            f'Logged in audit trail as "{reason[:60]}".',
+        )
         return redirect(ip_obj.get_absolute_url() + 'ping/')
 
 

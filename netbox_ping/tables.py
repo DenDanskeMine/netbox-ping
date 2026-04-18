@@ -79,6 +79,11 @@ class PingResultTable(NetBoxTable):
         verbose_name='Uptime 30d',
         orderable=False,
     )
+    uptime_all_time = tables.Column(
+        accessor='uptime_all_time',
+        verbose_name='Uptime All-time',
+        orderable=False,
+    )
     history = columns.TemplateColumn(
         template_code=PINGRESULT_HISTORY_TEMPLATE,
         verbose_name='History',
@@ -97,17 +102,20 @@ class PingResultTable(NetBoxTable):
     def render_uptime_30d(self, value, record):
         return _uptime_cell(value, record)
 
+    def render_uptime_all_time(self, value, record):
+        return _uptime_cell(value, record)
+
     class Meta(NetBoxTable.Meta):
         model = PingResult
         fields = (
             'pk', 'id', 'ip_address', 'status', 'response_time_ms',
             'dns_name', 'consecutive_down_count',
-            'uptime_24h', 'uptime_7d', 'uptime_30d',
+            'uptime_24h', 'uptime_7d', 'uptime_30d', 'uptime_all_time',
             'last_seen', 'last_checked', 'history', 'actions',
         )
         default_columns = (
             'ip_address', 'status', 'response_time_ms',
-            'dns_name', 'uptime_24h', 'uptime_7d',
+            'dns_name', 'uptime_24h', 'uptime_7d', 'uptime_all_time',
             'consecutive_down_count', 'last_seen', 'last_checked',
             'history',
         )

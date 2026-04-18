@@ -25,6 +25,7 @@ urlpatterns = [
     path('prefix/<int:pk>/scan/', views.PrefixScanActionView.as_view(), name='prefix_scan'),
     path('prefix/<int:pk>/discover/', views.PrefixDiscoverActionView.as_view(), name='prefix_discover'),
     path('ip/<int:pk>/ping/', views.IPPingSingleActionView.as_view(), name='ip_ping'),
+    path('ip/<int:pk>/reset-uptime/', views.IPUptimeResetActionView.as_view(), name='ip_reset_uptime'),
 
     # Bulk action endpoints (from prefix list page)
     path('bulk-scan/', views.BulkPrefixScanView.as_view(), name='bulk_prefix_scan'),
