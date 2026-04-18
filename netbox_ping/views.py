@@ -670,3 +670,97 @@ class SendDigestNowView(LoginRequiredMixin, PermissionRequiredMixin, View):
             messages.error(request, f'Failed to send digest: {e}')
 
         return redirect('plugins:netbox_ping:settings')
+
+
+# ─── Audit Reports ──────────────────────────────────────────────
+
+class AuditReportView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Unified audit report page — date-filtered data with CSV/PDF export.
+
+    Supports 4 report types via ?report= query param:
+      - sla          (SLA / Uptime Summary)
+      - incidents    (Incident Log)
+      - resets       (Uptime Reset Audit)
+      - coverage     (DNS Changes + Prefix Coverage)
+
+    Export modes via ?export= query param:
+      - csv — download CSV file
+      - pdf — render print-friendly template with auto-print JS
+    """
+    permission_required = 'netbox_ping.view_pinghistory'
+
+    def get(self, request):
+        from datetime import date, timedelta
+        from django.http import HttpResponse
+        import tablib
+
+        from .forms import AuditReportFilterForm
+        from .reports import REPORT_REGISTRY
+
+        report_key = request.GET.get('report', 'sla')
+        report = REPORT_REGISTRY.get(report_key, REPORT_REGISTRY['sla'])
+
+        # Filter form — prefill from GET, default range = last 30 days
+        form_data = request.GET.copy()
+        if 'start_date' not in form_data or not form_data.get('start_date'):
+            form_data['start_date'] = (date.today() - timedelta(days=30)).isoformat()
+        if 'end_date' not in form_data or not form_data.get('end_date'):
+            form_data['end_date'] = date.today().isoformat()
+        form = AuditReportFilterForm(form_data)
+
+        filters = {}
+        if form.is_valid():
+            cd = form.cleaned_data
+            from django.utils import timezone as tz
+            if cd.get('start_date'):
+                filters['start'] = tz.make_aware(
+                    tz.datetime.combine(cd['start_date'], tz.datetime.min.time()),
+                )
+            if cd.get('end_date'):
+                filters['end'] = tz.make_aware(
+                    tz.datetime.combine(cd['end_date'], tz.datetime.max.time()),
+                )
+            if cd.get('ip_address'):
+                filters['ip_address'] = cd['ip_address']
+            if cd.get('site_id'):
+                filters['site_id'] = cd['site_id']
+            if cd.get('tenant_id'):
+                filters['tenant_id'] = cd['tenant_id']
+
+        rows = report.get_queryset(filters)
+        serialized = [report.row(r) for r in rows]
+
+        export = request.GET.get('export')
+
+        # ─── CSV export ───
+        if export == 'csv':
+            ds = tablib.Dataset(headers=report.header_labels())
+            for r in serialized:
+                ds.append([r[k] for k in report.field_keys()])
+            response = HttpResponse(ds.csv, content_type='text/csv')
+            fname = f'netbox-ping-{report.key}-{filters.get("start", "").__str__()[:10] or "all"}-to-{filters.get("end", "").__str__()[:10] or "now"}.csv'
+            fname = fname.replace(' ', '_')
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+
+        # ─── PDF export (print-friendly template + auto-print JS) ───
+        if export == 'pdf':
+            return render(request, 'netbox_ping/audit_report_print.html', {
+                'report': report,
+                'rows': serialized,
+                'filters': filters,
+                'form_data': dict(form_data.items()),
+                'auto_print': True,
+                'row_count': len(serialized),
+            })
+
+        # ─── Normal HTML view ───
+        return render(request, 'netbox_ping/audit_report.html', {
+            'form': form,
+            'report': report,
+            'report_key': report_key,
+            'all_reports': REPORT_REGISTRY,
+            'rows': serialized,
+            'filters': filters,
+            'row_count': len(serialized),
+        })

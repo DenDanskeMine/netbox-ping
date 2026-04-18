@@ -34,6 +34,9 @@ urlpatterns = [
     # Per-prefix schedule
     path('prefix/<int:pk>/schedule/', views.PrefixScheduleEditView.as_view(), name='prefix_schedule'),
 
+    # Audit Reports
+    path('reports/', views.AuditReportView.as_view(), name='audit_report'),
+
     # Settings
     path('settings/', views.PluginSettingsEditView.as_view(), name='settings'),
     path('settings/test-email/', views.SendTestEmailView.as_view(), name='test_email'),

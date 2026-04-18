@@ -119,3 +119,33 @@ class PrefixScheduleForm(forms.ModelForm):
             'stale_mode',
             'ping_mode', 'custom_jumphost',
         )
+
+
+class AuditReportFilterForm(forms.Form):
+    """Shared filter form for audit reports (all report types)."""
+
+    start_date = forms.DateField(
+        required=False,
+        label='Start Date',
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+    end_date = forms.DateField(
+        required=False,
+        label='End Date',
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+    ip_address = forms.CharField(
+        required=False,
+        label='IP Address / CIDR',
+        widget=forms.TextInput(attrs={'placeholder': 'e.g. 10.0.0.5 or 10.0.0.0/24'}),
+    )
+    site_id = forms.IntegerField(
+        required=False,
+        label='Site ID',
+        widget=forms.NumberInput(attrs={'placeholder': 'Optional'}),
+    )
+    tenant_id = forms.IntegerField(
+        required=False,
+        label='Tenant ID',
+        widget=forms.NumberInput(attrs={'placeholder': 'Optional'}),
+    )

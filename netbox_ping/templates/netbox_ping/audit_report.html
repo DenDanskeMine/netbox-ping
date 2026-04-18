@@ -1,0 +1,121 @@
+{% extends 'base/layout.html' %}
+{% load helpers %}
+
+{% block title %}Audit Reports — NetBox Ping{% endblock %}
+
+{% block content %}
+<div class="px-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="mb-1">
+        <span class="mdi mdi-file-chart-outline"></span>
+        Audit Reports
+      </h1>
+      <p class="text-muted mb-0">
+        Filter plugin data over a date range and export for compliance reporting.
+      </p>
+    </div>
+  </div>
+
+  {# Report Type Tabs #}
+  <ul class="nav nav-tabs mb-3">
+    {% for key, r in all_reports.items %}
+      <li class="nav-item">
+        <a class="nav-link {% if key == report_key %}active{% endif %}"
+           href="?report={{ key }}{% if filters.start %}&start_date={{ form_data.start_date }}{% endif %}{% if filters.end %}&end_date={{ form_data.end_date }}{% endif %}">
+          {{ r.title }}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <div class="alert alert-info py-2 mb-3 small">
+    <strong>{{ report.title }}:</strong> {{ report.description }}
+  </div>
+
+  {# Filter Form #}
+  <form method="get" class="card mb-3">
+    <input type="hidden" name="report" value="{{ report_key }}">
+    <div class="card-body">
+      <h6 class="mb-3">Filters</h6>
+      <div class="row g-3 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label small">Start Date</label>
+          {{ form.start_date }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">End Date</label>
+          {{ form.end_date }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">IP Address / CIDR</label>
+          {{ form.ip_address }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Site ID</label>
+          {{ form.site_id }}
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Tenant ID</label>
+          {{ form.tenant_id }}
+        </div>
+        <div class="col-md-1 d-flex gap-1">
+          <button type="submit" class="btn btn-primary w-100">
+            <span class="mdi mdi-filter"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  {# Summary Header + Export Buttons #}
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <div class="small text-muted">
+      <strong>{{ row_count }}</strong> result{{ row_count|pluralize }}
+      {% if filters.start %}from <strong>{{ filters.start|date:"Y-m-d" }}</strong>{% endif %}
+      {% if filters.end %}to <strong>{{ filters.end|date:"Y-m-d" }}</strong>{% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <a href="?{{ request.GET.urlencode }}&export=csv" class="btn btn-sm btn-outline-success">
+        <span class="mdi mdi-file-delimited-outline"></span> Export CSV
+      </a>
+      <a href="?{{ request.GET.urlencode }}&export=pdf" target="_blank" class="btn btn-sm btn-outline-danger">
+        <span class="mdi mdi-file-pdf-box"></span> Export PDF
+      </a>
+    </div>
+  </div>
+
+  {# Results Table #}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0">
+        <thead class="table-light">
+          <tr>
+            {% for header in report.header_labels %}
+              <th>{{ header }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              {% for key in report.field_keys %}
+                <td>{{ row|get_item:key }}</td>
+              {% endfor %}
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="{{ report.columns|length }}" class="text-center text-muted py-4">
+                <span class="mdi mdi-database-off-outline"></span>
+                No results for the selected filters.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

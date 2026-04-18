@@ -20,6 +20,13 @@ menu = PluginMenu(
                 permissions=('netbox_ping.view_subnetscanresult',),
             ),
         )),
+        ('Reports', (
+            PluginMenuItem(
+                link='plugins:netbox_ping:audit_report',
+                link_text='Audit Reports',
+                permissions=('netbox_ping.view_pinghistory',),
+            ),
+        )),
         ('Configuration', (
             PluginMenuItem(
                 link='plugins:netbox_ping:settings',
