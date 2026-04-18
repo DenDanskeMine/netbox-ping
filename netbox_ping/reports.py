@@ -36,6 +36,22 @@ def _clamp_range(start, end):
     return start, end
 
 
+def _apply_ip_filter(queryset, ip_input, relation_prefix='ip_address'):
+    """Apply IP address filter to queryset.
+
+    If input is a CIDR (contains '/'), match IPs contained in that network.
+    Otherwise, match the specific host IP (ignoring mask).
+    """
+    if not ip_input:
+        return queryset
+    ip_input = ip_input.strip()
+    if '/' in ip_input:
+        # CIDR — match IPs inside this network
+        return queryset.filter(**{f'{relation_prefix}__address__net_contained_or_equal': ip_input})
+    # Single IP — match by host (ignore mask)
+    return queryset.filter(**{f'{relation_prefix}__address__net_host': ip_input})
+
+
 class BaseReport:
     key = ''
     title = ''
@@ -101,8 +117,7 @@ class SLAReport(BaseReport):
             )
         if filters.get('tenant_id'):
             qs = qs.filter(ip_address__tenant_id=filters['tenant_id'])
-        if filters.get('ip_address'):
-            qs = qs.filter(ip_address__address__net_contains_or_equals=filters['ip_address'])
+        qs = _apply_ip_filter(qs, filters.get('ip_address'))
 
         # Attach computed stats
         for row in qs:
@@ -153,8 +168,7 @@ class IncidentReport(BaseReport):
             qs = qs.filter(created_at__gte=start)
         if end:
             qs = qs.filter(created_at__lte=end)
-        if filters.get('ip_address'):
-            qs = qs.filter(ip_address__address__net_contains_or_equals=filters['ip_address'])
+        qs = _apply_ip_filter(qs, filters.get('ip_address'))
         if filters.get('tenant_id'):
             qs = qs.filter(ip_address__tenant_id=filters['tenant_id'])
         return qs
@@ -200,8 +214,7 @@ class UptimeResetReport(BaseReport):
             qs = qs.filter(reset_at__gte=start)
         if end:
             qs = qs.filter(reset_at__lte=end)
-        if filters.get('ip_address'):
-            qs = qs.filter(ip_address__address__net_contains_or_equals=filters['ip_address'])
+        qs = _apply_ip_filter(qs, filters.get('ip_address'))
         if filters.get('tenant_id'):
             qs = qs.filter(ip_address__tenant_id=filters['tenant_id'])
         return qs
@@ -248,8 +261,7 @@ class CoverageReport(BaseReport):
             dns = dns.filter(changed_at__gte=start)
         if end:
             dns = dns.filter(changed_at__lte=end)
-        if filters.get('ip_address'):
-            dns = dns.filter(ip_address__address__net_contains_or_equals=filters['ip_address'])
+        dns = _apply_ip_filter(dns, filters.get('ip_address'))
         if filters.get('tenant_id'):
             dns = dns.filter(ip_address__tenant_id=filters['tenant_id'])
         for d in dns:

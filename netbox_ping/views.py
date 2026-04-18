@@ -762,5 +762,6 @@ class AuditReportView(LoginRequiredMixin, PermissionRequiredMixin, View):
             'all_reports': REPORT_REGISTRY,
             'rows': serialized,
             'filters': filters,
+            'form_data': dict(form_data.items()),
             'row_count': len(serialized),
         })

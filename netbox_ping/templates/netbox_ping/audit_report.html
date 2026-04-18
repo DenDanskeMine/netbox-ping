@@ -1,121 +1,156 @@
-{% extends 'base/layout.html' %}
+{% extends 'generic/_base.html' %}
 {% load helpers %}
 
-{% block title %}Audit Reports — NetBox Ping{% endblock %}
+{% block title %}Audit Reports{% endblock %}
 
-{% block content %}
-<div class="px-3">
-
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <div>
-      <h1 class="mb-1">
-        <span class="mdi mdi-file-chart-outline"></span>
-        Audit Reports
-      </h1>
-      <p class="text-muted mb-0">
-        Filter plugin data over a date range and export for compliance reporting.
-      </p>
-    </div>
+{% block subtitle %}
+  <div class="object-subtitle">
+    <span>{{ report.description }}</span>
   </div>
+{% endblock %}
 
-  {# Report Type Tabs #}
-  <ul class="nav nav-tabs mb-3">
+{% block controls %}
+  <div class="btn-list">
+    <a href="?{{ request.GET.urlencode }}&export=csv" class="btn btn-sm btn-success">
+      <span class="mdi mdi-file-delimited-outline"></span> Export CSV
+    </a>
+    <a href="?{{ request.GET.urlencode }}&export=pdf" target="_blank" class="btn btn-sm btn-danger">
+      <span class="mdi mdi-file-pdf-box"></span> Export PDF
+    </a>
+  </div>
+{% endblock %}
+
+{% block tabs %}
+  <ul class="nav nav-tabs" role="tablist">
     {% for key, r in all_reports.items %}
-      <li class="nav-item">
-        <a class="nav-link {% if key == report_key %}active{% endif %}"
-           href="?report={{ key }}{% if filters.start %}&start_date={{ form_data.start_date }}{% endif %}{% if filters.end %}&end_date={{ form_data.end_date }}{% endif %}">
+      <li class="nav-item" role="presentation">
+        <a class="nav-link{% if key == report_key %} active{% endif %}"
+           href="?report={{ key }}{% if form_data.start_date %}&start_date={{ form_data.start_date }}{% endif %}{% if form_data.end_date %}&end_date={{ form_data.end_date }}{% endif %}{% if form_data.ip_address %}&ip_address={{ form_data.ip_address }}{% endif %}">
           {{ r.title }}
         </a>
       </li>
     {% endfor %}
   </ul>
+{% endblock %}
 
-  <div class="alert alert-info py-2 mb-3 small">
-    <strong>{{ report.title }}:</strong> {{ report.description }}
-  </div>
-
-  {# Filter Form #}
-  <form method="get" class="card mb-3">
-    <input type="hidden" name="report" value="{{ report_key }}">
-    <div class="card-body">
-      <h6 class="mb-3">Filters</h6>
-      <div class="row g-3 align-items-end">
-        <div class="col-md-2">
-          <label class="form-label small">Start Date</label>
-          {{ form.start_date }}
+{% block content %}
+<div class="row">
+  {# Filters sidebar #}
+  <div class="col col-md-3">
+    <form method="get" action="" id="report-filter-form">
+      <input type="hidden" name="report" value="{{ report_key }}">
+      <div class="card">
+        <h5 class="card-header">Filters</h5>
+        <div class="card-body">
+          <div class="mb-3">
+            <label for="id_start_date" class="form-label">Start Date</label>
+            {{ form.start_date }}
+          </div>
+          <div class="mb-3">
+            <label for="id_end_date" class="form-label">End Date</label>
+            {{ form.end_date }}
+          </div>
+          <div class="mb-3">
+            <label for="id_ip_address" class="form-label">IP Address / CIDR</label>
+            {{ form.ip_address }}
+            <div class="form-text">
+              e.g. <code>192.168.0.1</code> or <code>10.0.0.0/24</code>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="id_site_id" class="form-label">Site ID</label>
+            {{ form.site_id }}
+          </div>
+          <div class="mb-3">
+            <label for="id_tenant_id" class="form-label">Tenant ID</label>
+            {{ form.tenant_id }}
+          </div>
         </div>
-        <div class="col-md-2">
-          <label class="form-label small">End Date</label>
-          {{ form.end_date }}
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">IP Address / CIDR</label>
-          {{ form.ip_address }}
-        </div>
-        <div class="col-md-2">
-          <label class="form-label small">Site ID</label>
-          {{ form.site_id }}
-        </div>
-        <div class="col-md-2">
-          <label class="form-label small">Tenant ID</label>
-          {{ form.tenant_id }}
-        </div>
-        <div class="col-md-1 d-flex gap-1">
-          <button type="submit" class="btn btn-primary w-100">
-            <span class="mdi mdi-filter"></span>
+        <div class="card-footer text-end">
+          <a href="?report={{ report_key }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <span class="mdi mdi-filter"></span> Apply Filters
           </button>
         </div>
       </div>
-    </div>
-  </form>
-
-  {# Summary Header + Export Buttons #}
-  <div class="d-flex align-items-center justify-content-between mb-2">
-    <div class="small text-muted">
-      <strong>{{ row_count }}</strong> result{{ row_count|pluralize }}
-      {% if filters.start %}from <strong>{{ filters.start|date:"Y-m-d" }}</strong>{% endif %}
-      {% if filters.end %}to <strong>{{ filters.end|date:"Y-m-d" }}</strong>{% endif %}
-    </div>
-    <div class="d-flex gap-2">
-      <a href="?{{ request.GET.urlencode }}&export=csv" class="btn btn-sm btn-outline-success">
-        <span class="mdi mdi-file-delimited-outline"></span> Export CSV
-      </a>
-      <a href="?{{ request.GET.urlencode }}&export=pdf" target="_blank" class="btn btn-sm btn-outline-danger">
-        <span class="mdi mdi-file-pdf-box"></span> Export PDF
-      </a>
-    </div>
+    </form>
   </div>
 
-  {# Results Table #}
-  <div class="card">
-    <div class="table-responsive">
-      <table class="table table-hover table-sm mb-0">
-        <thead class="table-light">
-          <tr>
-            {% for header in report.header_labels %}
-              <th>{{ header }}</th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
+  {# Results #}
+  <div class="col col-md-9">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h5 class="mb-0">
+          <span class="mdi mdi-file-chart-outline"></span>
+          {{ report.title }}
+        </h5>
+        <span class="badge text-bg-secondary">
+          {{ row_count }} result{{ row_count|pluralize }}
+        </span>
+      </div>
+
+      {% if filters.start or filters.end or filters.ip_address or filters.site_id or filters.tenant_id %}
+      <div class="card-body border-bottom py-2 bg-body-tertiary">
+        <div class="d-flex flex-wrap gap-2 align-items-center small">
+          <span class="text-muted">Active filters:</span>
+          {% if filters.start %}<span class="badge text-bg-primary">From {{ filters.start|date:"Y-m-d" }}</span>{% endif %}
+          {% if filters.end %}<span class="badge text-bg-primary">To {{ filters.end|date:"Y-m-d" }}</span>{% endif %}
+          {% if filters.ip_address %}<span class="badge text-bg-info">IP: {{ filters.ip_address }}</span>{% endif %}
+          {% if filters.site_id %}<span class="badge text-bg-info">Site: {{ filters.site_id }}</span>{% endif %}
+          {% if filters.tenant_id %}<span class="badge text-bg-info">Tenant: {{ filters.tenant_id }}</span>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
             <tr>
-              {% for key in report.field_keys %}
-                <td>{{ row|get_item:key }}</td>
+              {% for header in report.header_labels %}
+                <th>{{ header }}</th>
               {% endfor %}
             </tr>
-          {% empty %}
-            <tr>
-              <td colspan="{{ report.columns|length }}" class="text-center text-muted py-4">
-                <span class="mdi mdi-database-off-outline"></span>
-                No results for the selected filters.
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                {% for key in report.field_keys %}
+                  <td>{{ row|get_item:key }}</td>
+                {% endfor %}
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="{{ report.columns|length }}" class="text-center text-muted py-5">
+                  <div>
+                    <span class="mdi mdi-database-off-outline" style="font-size:2rem;opacity:0.4;"></span>
+                  </div>
+                  <div class="mt-2">No results for the selected filters.</div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
-
 </div>
+
+<style>
+/* Ensure form inputs match NetBox style */
+#report-filter-form input[type="text"],
+#report-filter-form input[type="date"],
+#report-filter-form input[type="number"] {
+  width: 100%;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--bs-border-color, #ced4da);
+  border-radius: 0.25rem;
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+#report-filter-form input:focus {
+  outline: 0;
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+</style>
 {% endblock %}
