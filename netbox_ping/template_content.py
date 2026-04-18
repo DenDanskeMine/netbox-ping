@@ -70,9 +70,28 @@ class IPAddressPingExtension(PluginTemplateExtension):
             ping_result = ip.ping_result
         except PingResult.DoesNotExist:
             ping_result = None
+
+        uptime_pct = None
+        uptime_color = 'secondary'
+        uptime_up = 0
+        uptime_total = 0
+        if ping_result:
+            stats = ping_result.uptime_percentage(hours=None)  # all-time
+            if stats:
+                uptime_pct = stats['percentage']
+                uptime_up = stats['up']
+                uptime_total = stats['total']
+                uptime_color = ping_result.uptime_color(uptime_pct)
+
         return self.render(
             'netbox_ping/inc/ipaddress_ping_panel.html',
-            extra_context={'ping_result': ping_result},
+            extra_context={
+                'ping_result': ping_result,
+                'uptime_pct': uptime_pct,
+                'uptime_up': uptime_up,
+                'uptime_total': uptime_total,
+                'uptime_color': uptime_color,
+            },
         )
 
     def buttons(self):

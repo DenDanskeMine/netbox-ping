@@ -23,6 +23,17 @@
         </td>
       </tr>
       <tr>
+        <th scope="row">Uptime</th>
+        <td>
+          {% if uptime_pct is not None %}
+            <span class="badge text-bg-{{ uptime_color }}">{{ uptime_pct }}%</span>
+            <span class="text-muted small">({{ uptime_up }} / {{ uptime_total }} pings all-time)</span>
+          {% else %}
+            <span class="text-muted">No data</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
         <th scope="row">RTT</th>
         <td>{{ ping_result.response_time_ms|default:"N/A" }}{% if ping_result.response_time_ms %} ms{% endif %}</td>
       </tr>
