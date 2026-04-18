@@ -127,25 +127,29 @@ class AuditReportFilterForm(forms.Form):
     start_date = forms.DateField(
         required=False,
         label='Start Date',
-        widget=forms.DateInput(attrs={'type': 'date'}),
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
     )
     end_date = forms.DateField(
         required=False,
         label='End Date',
-        widget=forms.DateInput(attrs={'type': 'date'}),
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
     )
     ip_address = forms.CharField(
         required=False,
         label='IP Address / CIDR',
-        widget=forms.TextInput(attrs={'placeholder': 'e.g. 10.0.0.5 or 10.0.0.0/24'}),
+        widget=forms.TextInput(attrs={
+            'placeholder': 'e.g. 10.0.0.5 or 10.0.0.0/24',
+            'class': 'form-control',
+        }),
+        help_text='Single IP matches host; CIDR matches all IPs within the network.',
     )
     site_id = forms.IntegerField(
         required=False,
         label='Site ID',
-        widget=forms.NumberInput(attrs={'placeholder': 'Optional'}),
+        widget=forms.NumberInput(attrs={'placeholder': 'Optional', 'class': 'form-control'}),
     )
     tenant_id = forms.IntegerField(
         required=False,
         label='Tenant ID',
-        widget=forms.NumberInput(attrs={'placeholder': 'Optional'}),
+        widget=forms.NumberInput(attrs={'placeholder': 'Optional', 'class': 'form-control'}),
     )
