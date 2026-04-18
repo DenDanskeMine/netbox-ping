@@ -15,10 +15,10 @@
         </a>
       {% endfor %}
     </div>
-    <a href="?{{ request.GET.urlencode }}&export=csv" class="btn btn-sm btn-success">
+    <a href="?{{ request.GET.urlencode }}&export=csv" class="btn btn-sm btn-outline-secondary">
       <i class="mdi mdi-file-delimited-outline"></i> Export CSV
     </a>
-    <a href="?{{ request.GET.urlencode }}&export=pdf" target="_blank" class="btn btn-sm btn-danger">
+    <a href="?{{ request.GET.urlencode }}&export=pdf" target="_blank" class="btn btn-sm btn-outline-secondary">
       <i class="mdi mdi-file-pdf-box"></i> Export PDF
     </a>
   </div>
