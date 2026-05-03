@@ -5,7 +5,7 @@ class NetBoxPingConfig(PluginConfig):
     name = 'netbox_ping'
     verbose_name = 'NetBox Ping'
     description = 'Ping and discover IP addresses in NetBox'
-    version = '2.6.0'
+    version = '2.6.1'
     author = 'Christian Rose'
     base_url = 'netbox-ping'
     min_version = '4.5.0'
