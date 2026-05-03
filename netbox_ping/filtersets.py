@@ -24,9 +24,15 @@ class PingResultFilterSet(NetBoxModelFilterSet):
     def search(self, queryset, name, value):
         if not value.strip():
             return queryset
-        return queryset.filter(
-            db_models.Q(dns_name__icontains=value)
-        )
+        # Match against DNS name (own and IPAddress.dns_name) and the IP
+        # address text. Use net_host_contains so '192.168' matches all IPs
+        # within that range (host-based, ignoring mask).
+        q = db_models.Q(dns_name__icontains=value)
+        q |= db_models.Q(ip_address__dns_name__icontains=value)
+        # IP fragment match — '192.168' matches every IP starting with that.
+        # Uses django-netfields' host transform, then plain icontains.
+        q |= db_models.Q(ip_address__address__host__icontains=value)
+        return queryset.filter(q).distinct()
 
 
 class PingHistoryFilterSet(NetBoxModelFilterSet):
@@ -45,9 +51,12 @@ class PingHistoryFilterSet(NetBoxModelFilterSet):
     def search(self, queryset, name, value):
         if not value.strip():
             return queryset
-        return queryset.filter(
-            db_models.Q(dns_name__icontains=value)
-        )
+        # Match against the cached dns_name on the history row, the linked
+        # IPAddress.dns_name, and the IP address text (host fragment).
+        q = db_models.Q(dns_name__icontains=value)
+        q |= db_models.Q(ip_address__dns_name__icontains=value)
+        q |= db_models.Q(ip_address__address__host__icontains=value)
+        return queryset.filter(q).distinct()
 
 
 class SubnetScanResultFilterSet(NetBoxModelFilterSet):
