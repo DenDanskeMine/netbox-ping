@@ -621,11 +621,21 @@ def discover_prefix(prefix_obj, dns_servers=None, perform_dns=True, max_workers=
                     dns_name = resolve_dns(ip_str, dns_servers)
 
                 try:
-                    ip_obj = IPAddress.objects.create(
-                        address=f'{ip_str}/{prefix_length}',
-                        status='active',
-                        dns_name=dns_name,
-                    )
+                    # Inherit VRF from the parent prefix when configured (#30).
+                    # Done lazily here to keep PluginSettings import out of the
+                    # module top-level (avoids circular import in some contexts).
+                    ip_kwargs = {
+                        'address': f'{ip_str}/{prefix_length}',
+                        'status': 'active',
+                        'dns_name': dns_name,
+                    }
+                    try:
+                        from .models import PluginSettings
+                        if PluginSettings.load().discover_inherit_vrf_from_prefix and prefix_obj.vrf_id:
+                            ip_kwargs['vrf'] = prefix_obj.vrf
+                    except Exception:
+                        pass
+                    ip_obj = IPAddress.objects.create(**ip_kwargs)
                     PingResult.objects.create(
                         ip_address=ip_obj,
                         is_reachable=True,
