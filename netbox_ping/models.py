@@ -208,14 +208,27 @@ class PingResult(NetBoxModel):
         return self.ip_address.uptime_resets.order_by('-reset_at').first()
 
     def uptime_color(self, percentage):
-        """Return a bootstrap color class for an uptime percentage."""
+        """Return a bootstrap color class for an uptime percentage.
+
+        Thresholds are configurable in PluginSettings (#28). Defaults
+        match the original hard-coded tiers for backwards compatibility.
+        """
         if percentage is None:
             return 'secondary'
-        if percentage >= 99.9:
+        # Read thresholds from PluginSettings; fall back to defaults if
+        # the singleton hasn't been created yet (e.g. fresh install).
+        try:
+            cfg = PluginSettings.load()
+            excellent = cfg.sla_excellent_threshold
+            good = cfg.sla_good_threshold
+            warning = cfg.sla_warning_threshold
+        except Exception:
+            excellent, good, warning = 99.9, 99.0, 95.0
+        if percentage >= excellent:
             return 'success'
-        if percentage >= 99.0:
+        if percentage >= good:
             return 'info'
-        if percentage >= 95.0:
+        if percentage >= warning:
             return 'warning'
         return 'danger'
 
@@ -648,6 +661,36 @@ class PluginSettings(models.Model):
         default=7,
         verbose_name='New IP Badge Duration (days)',
         help_text='Show "New" badge on auto-discovered IPs for this many days (0 = disabled)',
+    )
+
+    # ── SLA / Uptime Thresholds (#28) ──
+    # Uptime percentage at which an IP is shown in each color.
+    # Defaults match the original hard-coded tiers: 99.9 / 99.0 / 95.0
+    sla_excellent_threshold = models.FloatField(
+        default=99.9,
+        verbose_name='SLA Excellent Threshold (%)',
+        help_text='Uptime % at or above this value is shown as green (default: 99.9)',
+    )
+    sla_good_threshold = models.FloatField(
+        default=99.0,
+        verbose_name='SLA Good Threshold (%)',
+        help_text='Uptime % at or above this value (but below excellent) is shown as blue (default: 99.0)',
+    )
+    sla_warning_threshold = models.FloatField(
+        default=95.0,
+        verbose_name='SLA Warning Threshold (%)',
+        help_text='Uptime % at or above this value (but below good) is shown as yellow; below this is red (default: 95.0)',
+    )
+
+    # ── Discover behavior (#30) ──
+    discover_inherit_vrf_from_prefix = models.BooleanField(
+        default=True,
+        verbose_name='Inherit VRF from Prefix on Discover',
+        help_text=(
+            'When discovering IPs in a prefix that belongs to a VRF, '
+            'create the new IPAddress objects in that same VRF instead '
+            'of the global table. Prevents IP duplicates across VRFs.'
+        ),
     )
 
     class Meta:

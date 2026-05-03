@@ -101,6 +101,8 @@ class PluginSettingsForm(NetBoxModelForm):
             'email_notifications_enabled', 'email_recipients',
             'email_digest_interval', 'email_include_details',
             'email_utilization_threshold', 'email_on_change_only',
+            'sla_excellent_threshold', 'sla_good_threshold', 'sla_warning_threshold',
+            'discover_inherit_vrf_from_prefix',
         )
         widgets = {
             'email_recipients': forms.Textarea(attrs={
