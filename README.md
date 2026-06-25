@@ -20,7 +20,26 @@ A NetBox plugin for pinging, discovering, and monitoring IP addresses directly f
 - Scan all existing IPs in a prefix, or discover new hosts across entire subnets
 - Bulk scan/discover from the prefix list view
 - Auto-scan scheduling with per-prefix overrides (Follow Global / Custom On / Custom Off)
+- Per-VRF policies to include or exclude an entire VRF from scanning in one place
 - Skip reserved IPs during scans
+
+**Policies** (`Plugins > Ping > Policies`)
+
+Control which prefixes get auto-scanned/discovered at three levels. Precedence,
+most specific first: **per-prefix override > per-VRF policy > global setting**.
+
+- **Prefix Policies** — per-prefix overrides (Follow Global / Custom On / Custom Off),
+  also editable inline on a prefix's Ping Status tab. The list shows every override
+  in one place.
+- **VRF Policies** — per-VRF policy (**Follow Global / Always / Never**) that applies
+  to *every* prefix in the VRF, including ones added later. Setting a VRF to **Never**
+  is the scalable way to keep an unroutable partner/handoff VRF from ever being scanned,
+  without touching each prefix.
+
+> **Scope of `Never`:** a `Never` policy suppresses **automatic** scan/discover *and*
+> bulk "Scan/Discover all". Single, explicit operator actions (the per-IP "Ping Now"
+> button and a single prefix's "Ping Subnet") still run on demand — same as the
+> "ping anyway" behaviour for reserved IPs.
 
 **Monitoring**
 
@@ -166,7 +185,10 @@ Emails show state transitions per IP (e.g. Up -> Down, Down -> Stale, Stale -> D
 | Plugins > Ping > Ping Results | Current state of all tracked IPs with quick filter tabs |
 | Plugins > Ping > Ping History | Full audit trail of all ping checks |
 | Plugins > Ping > Scan Results | Per-prefix scan summaries with utilization |
+| Plugins > Ping > Policies > Prefix Policies | All per-prefix scan/discover overrides |
+| Plugins > Ping > Policies > VRF Policies | Per-VRF scan/discover policies (Follow Global / Always / Never) |
 | Plugins > Ping > Settings | All plugin configuration |
+| Plugins > Ping > SSH Jumphosts | SSH jumphosts for routed pings |
 
 ## Performance
 
