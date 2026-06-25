@@ -30,7 +30,11 @@
             <div class="d-flex align-items-center gap-3">
               {{ schedule_form.scan_mode }}
               <span class="text-muted" id="scan-global-hint">
-                {% if plugin_settings.auto_scan_enabled %}
+                {% if vrf_policy and vrf_policy.scan_mode == 'never' %}
+                  VRF {{ vrf_policy.vrf.name }}: <span class="badge text-bg-danger">Never</span> — overrides global
+                {% elif vrf_policy and vrf_policy.scan_mode == 'always' %}
+                  VRF {{ vrf_policy.vrf.name }}: <span class="badge text-bg-success">Always</span> — overrides global
+                {% elif plugin_settings.auto_scan_enabled %}
                   Global: <span class="badge text-bg-success">On</span> — {{ plugin_settings.get_auto_scan_interval_display }}
                 {% else %}
                   Global: <span class="badge text-bg-secondary">Off</span>
@@ -49,7 +53,11 @@
             <div class="d-flex align-items-center gap-3">
               {{ schedule_form.discover_mode }}
               <span class="text-muted" id="discover-global-hint">
-                {% if plugin_settings.auto_discover_enabled %}
+                {% if vrf_policy and vrf_policy.discover_mode == 'never' %}
+                  VRF {{ vrf_policy.vrf.name }}: <span class="badge text-bg-danger">Never</span> — overrides global
+                {% elif vrf_policy and vrf_policy.discover_mode == 'always' %}
+                  VRF {{ vrf_policy.vrf.name }}: <span class="badge text-bg-success">Always</span> — overrides global
+                {% elif plugin_settings.auto_discover_enabled %}
                   Global: <span class="badge text-bg-success">On</span> — {{ plugin_settings.get_auto_discover_interval_display }}
                 {% else %}
                   Global: <span class="badge text-bg-secondary">Off</span>

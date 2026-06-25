@@ -1,0 +1,56 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+  <li class="breadcrumb-item">
+    <a href="{% url 'plugins:netbox_ping:vrfpolicy_list' %}">VRF Policies</a>
+  </li>
+  <li class="breadcrumb-item active">{{ object }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">VRF Ping Policy</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">VRF</th>
+            <td><a href="{{ object.vrf.get_absolute_url }}">{{ object.vrf }}</a></td>
+          </tr>
+          <tr>
+            <th scope="row">Auto-Scan</th>
+            <td>
+              {% if object.scan_mode == 'never' %}<span class="badge text-bg-danger">Never</span>
+              {% elif object.scan_mode == 'always' %}<span class="badge text-bg-success">Always</span>
+              {% else %}<span class="badge text-bg-secondary">Follow Global</span>{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Auto-Discover</th>
+            <td>
+              {% if object.discover_mode == 'never' %}<span class="badge text-bg-danger">Never</span>
+              {% elif object.discover_mode == 'always' %}<span class="badge text-bg-success">Always</span>
+              {% else %}<span class="badge text-bg-secondary">Follow Global</span>{% endif %}
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">How this works</h5>
+      <div class="card-body">
+        <p class="text-muted mb-2">
+          This policy applies to <strong>every prefix in {{ object.vrf }}</strong>, including
+          ones added later. Precedence, most specific first:
+        </p>
+        <p class="text-muted mb-0"><code>per-prefix override &gt; this VRF policy &gt; global setting</code></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

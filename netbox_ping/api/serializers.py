@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from netbox.api.serializers import NetBoxModelSerializer
-from ..models import PingResult, PingHistory, SubnetScanResult, UptimeReset
+from ..models import PingResult, PingHistory, SubnetScanResult, UptimeReset, VrfPolicy, PrefixSchedule
 
 
 class PingResultSerializer(NetBoxModelSerializer):
@@ -59,3 +59,25 @@ class SubnetScanResultSerializer(NetBoxModelSerializer):
             'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'prefix', 'hosts_up', 'total_hosts')
+
+
+class VrfPolicySerializer(NetBoxModelSerializer):
+    class Meta:
+        model = VrfPolicy
+        fields = (
+            'id', 'url', 'display', 'vrf', 'scan_mode', 'discover_mode',
+            'tags', 'custom_fields', 'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'vrf', 'scan_mode', 'discover_mode')
+
+
+class PrefixScheduleSerializer(NetBoxModelSerializer):
+    class Meta:
+        model = PrefixSchedule
+        fields = (
+            'id', 'url', 'display', 'prefix',
+            'scan_mode', 'scan_interval', 'discover_mode', 'discover_interval',
+            'stale_mode', 'ping_mode', 'custom_jumphost',
+            'tags', 'custom_fields', 'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'prefix', 'scan_mode', 'discover_mode')

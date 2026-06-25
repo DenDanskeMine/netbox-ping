@@ -1,0 +1,69 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+  <li class="breadcrumb-item">
+    <a href="{% url 'plugins:netbox_ping:prefixschedule_list' %}">Prefix Policies</a>
+  </li>
+  <li class="breadcrumb-item active">{{ object }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Prefix Policy</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Prefix</th>
+            <td><a href="{{ object.prefix.get_absolute_url }}">{{ object.prefix }}</a></td>
+          </tr>
+          <tr>
+            <th scope="row">Scan Mode</th>
+            <td>{{ object.get_scan_mode_display }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Scan Interval</th>
+            <td>{{ object.get_scan_interval_display }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Discover Mode</th>
+            <td>{{ object.get_discover_mode_display }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Discover Interval</th>
+            <td>{{ object.get_discover_interval_display }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Stale Detection</th>
+            <td>{{ object.get_stale_mode_display }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Ping Mode</th>
+            <td>{{ object.get_ping_mode_display }}</td>
+          </tr>
+          {% if object.custom_jumphost %}
+          <tr>
+            <th scope="row">Custom Jumphost</th>
+            <td>{{ object.custom_jumphost }}</td>
+          </tr>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Edit</h5>
+      <div class="card-body">
+        <p class="text-muted">This per-prefix policy can also be edited inline on the prefix's Ping Status tab.</p>
+        <a href="{{ object.prefix.get_absolute_url }}ping/" class="btn btn-primary">
+          <span class="mdi mdi-pencil"></span> Edit on Prefix
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

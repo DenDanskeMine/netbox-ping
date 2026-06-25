@@ -18,15 +18,18 @@ class NetBoxPingConfig(PluginConfig):
         from . import tables  # noqa: F401 — registers columns on core tables
 
         from django.db.models.signals import post_save, post_delete
-        from .models import PluginSettings, PrefixSchedule
+        from .models import PluginSettings, PrefixSchedule, VrfPolicy
         from .signals import (
             on_plugin_settings_saved,
             on_prefix_schedule_saved,
             on_prefix_schedule_deleted,
+            on_vrf_policy_changed,
         )
         post_save.connect(on_plugin_settings_saved, sender=PluginSettings)
         post_save.connect(on_prefix_schedule_saved, sender=PrefixSchedule)
         post_delete.connect(on_prefix_schedule_deleted, sender=PrefixSchedule)
+        post_save.connect(on_vrf_policy_changed, sender=VrfPolicy)
+        post_delete.connect(on_vrf_policy_changed, sender=VrfPolicy)
 
 
 config = NetBoxPingConfig

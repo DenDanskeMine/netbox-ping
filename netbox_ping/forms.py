@@ -1,9 +1,12 @@
 from django import forms
 from tenancy.models import Tenant
+from ipam.models import VRF
 from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm
 from utilities.forms.fields import DynamicModelChoiceField
 from utilities.forms.rendering import FieldSet
-from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, SSHJumpHost
+from utilities.forms.fields import DynamicModelMultipleChoiceField
+from ipam.models import Prefix
+from .models import PingResult, PingHistory, SubnetScanResult, PluginSettings, PrefixSchedule, SSHJumpHost, VrfPolicy, VRF_POLICY_MODE_CHOICES, SCHEDULE_MODE_CHOICES
 
 
 class PingResultFilterForm(NetBoxModelFilterSetForm):
@@ -113,7 +116,7 @@ class PluginSettingsForm(NetBoxModelForm):
 
 
 class PrefixScheduleForm(forms.ModelForm):
-    """Form for per-prefix schedule overrides."""
+    """Compact form embedded on the Prefix detail page tab."""
 
     class Meta:
         model = PrefixSchedule
@@ -123,6 +126,99 @@ class PrefixScheduleForm(forms.ModelForm):
             'stale_mode',
             'ping_mode', 'custom_jumphost',
         )
+
+
+class PrefixScheduleEditForm(NetBoxModelForm):
+    """Standard NetBox add/edit form for a per-prefix policy."""
+
+    prefix = DynamicModelChoiceField(
+        queryset=Prefix.objects.all(),
+        label='Prefix',
+        help_text='Each prefix can have at most one policy.',
+    )
+
+    class Meta:
+        model = PrefixSchedule
+        fields = (
+            'prefix',
+            'scan_mode', 'scan_interval',
+            'discover_mode', 'discover_interval',
+            'stale_mode',
+            'ping_mode', 'custom_jumphost',
+            'tags',
+        )
+
+
+class VrfPolicyTabForm(forms.ModelForm):
+    """Compact form embedded on the VRF detail page tab (modes only)."""
+
+    class Meta:
+        model = VrfPolicy
+        fields = ('scan_mode', 'discover_mode')
+
+
+class VrfPolicyForm(NetBoxModelForm):
+    """Standard NetBox add/edit form for a VRF ping policy."""
+
+    vrf = DynamicModelChoiceField(
+        queryset=VRF.objects.all(),
+        label='VRF',
+        help_text='Each VRF can have at most one ping policy.',
+    )
+
+    class Meta:
+        model = VrfPolicy
+        fields = ('vrf', 'scan_mode', 'discover_mode', 'tags')
+
+
+class VrfPolicyFilterForm(NetBoxModelFilterSetForm):
+    """Filter form for the VRF Ping Policy list view."""
+
+    model = VrfPolicy
+    fieldsets = (
+        FieldSet('q', 'filter_id'),
+        FieldSet('vrf_id', 'scan_mode', 'discover_mode', name='Policy'),
+    )
+    vrf_id = DynamicModelChoiceField(
+        queryset=VRF.objects.all(),
+        required=False,
+        label='VRF',
+    )
+    scan_mode = forms.ChoiceField(
+        required=False,
+        choices=[('', '---------')] + VRF_POLICY_MODE_CHOICES,
+        label='Auto-Scan',
+    )
+    discover_mode = forms.ChoiceField(
+        required=False,
+        choices=[('', '---------')] + VRF_POLICY_MODE_CHOICES,
+        label='Auto-Discover',
+    )
+
+
+class PrefixScheduleFilterForm(NetBoxModelFilterSetForm):
+    """Filter form for the per-prefix override list view."""
+
+    model = PrefixSchedule
+    fieldsets = (
+        FieldSet('q', 'filter_id'),
+        FieldSet('prefix_id', 'scan_mode', 'discover_mode', name='Override'),
+    )
+    prefix_id = DynamicModelMultipleChoiceField(
+        queryset=Prefix.objects.all(),
+        required=False,
+        label='Prefix',
+    )
+    scan_mode = forms.ChoiceField(
+        required=False,
+        choices=[('', '---------')] + SCHEDULE_MODE_CHOICES,
+        label='Scan Mode',
+    )
+    discover_mode = forms.ChoiceField(
+        required=False,
+        choices=[('', '---------')] + SCHEDULE_MODE_CHOICES,
+        label='Discover Mode',
+    )
 
 
 class AuditReportFilterForm(forms.Form):

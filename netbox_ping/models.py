@@ -41,6 +41,12 @@ STALE_MODE_CHOICES = [
     ('exclude', 'Exclude'),
 ]
 
+VRF_POLICY_MODE_CHOICES = [
+    ('follow_global', 'Follow Global'),
+    ('always', 'Always'),
+    ('never', 'Never'),
+]
+
 
 class PingResult(NetBoxModel):
     """Stores per-IP ping result. One record per IPAddress."""
@@ -733,7 +739,7 @@ CUSTOM_INTERVAL_CHOICES = [
 ]
 
 
-class PrefixSchedule(models.Model):
+class PrefixSchedule(NetBoxModel):
     """Per-prefix scheduling overrides for auto-scan/discover."""
 
     prefix = models.OneToOneField(
@@ -787,30 +793,37 @@ class PrefixSchedule(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Prefix Schedule'
-        verbose_name_plural = 'Prefix Schedules'
+        ordering = ['prefix']
+        verbose_name = 'Prefix Policy'
+        verbose_name_plural = 'Prefix Policies'
 
     def __str__(self):
         return f'Schedule for {self.prefix}'
 
-    def is_scan_enabled(self, global_settings):
+    def get_absolute_url(self):
+        return reverse('plugins:netbox_ping:prefixschedule', args=[self.pk])
+
+    def is_scan_enabled(self, global_settings, base=None):
         if self.scan_mode == 'custom_on':
             return True
         if self.scan_mode == 'custom_off':
             return False
-        return global_settings.auto_scan_enabled
+        # follow_global: defer to the resolved baseline (per-VRF policy or
+        # global). ``base`` is None for legacy callers that only know about
+        # the global setting.
+        return global_settings.auto_scan_enabled if base is None else base
 
     def get_effective_scan_interval(self, global_settings):
         if self.scan_mode == 'custom_on':
             return self.scan_interval
         return global_settings.auto_scan_interval
 
-    def is_discover_enabled(self, global_settings):
+    def is_discover_enabled(self, global_settings, base=None):
         if self.discover_mode == 'custom_on':
             return True
         if self.discover_mode == 'custom_off':
             return False
-        return global_settings.auto_discover_enabled
+        return global_settings.auto_discover_enabled if base is None else base
 
     def get_effective_discover_interval(self, global_settings):
         if self.discover_mode == 'custom_on':
@@ -827,3 +840,64 @@ class PrefixSchedule(models.Model):
         if global_settings.ssh_jumphost_enabled:
             return global_settings.default_jumphost
         return None
+
+
+class VrfPolicy(NetBoxModel):
+    """Per-VRF auto-scan/discover policy.
+
+    Lets an operator include or exclude an entire VRF — and therefore every
+    prefix in it, present and future — from auto-scan and auto-discover without
+    editing each prefix individually. This is the scalable knob for things like
+    unroutable partner/handoff VRFs that should never be probed.
+
+    Precedence, most specific first:
+        per-prefix PrefixSchedule > per-VRF VrfPolicy > global PluginSettings
+
+    A 'follow_global' mode is transparent: it falls back to whatever the global
+    settings say, so the default is identical to having no policy at all.
+    """
+
+    vrf = models.OneToOneField(
+        to='ipam.VRF',
+        on_delete=models.CASCADE,
+        related_name='ping_policy',
+    )
+    scan_mode = models.CharField(
+        max_length=20,
+        choices=VRF_POLICY_MODE_CHOICES,
+        default='follow_global',
+        verbose_name='Auto-Scan',
+        help_text='Follow global auto-scan, always scan, or never scan prefixes in this VRF',
+    )
+    discover_mode = models.CharField(
+        max_length=20,
+        choices=VRF_POLICY_MODE_CHOICES,
+        default='follow_global',
+        verbose_name='Auto-Discover',
+        help_text='Follow global auto-discover, always discover, or never discover prefixes in this VRF',
+    )
+
+    class Meta:
+        ordering = ['vrf__name']
+        verbose_name = 'VRF Policy'
+        verbose_name_plural = 'VRF Policies'
+
+    def __str__(self):
+        return f'VRF policy for {self.vrf}'
+
+    def get_absolute_url(self):
+        return reverse('plugins:netbox_ping:vrfpolicy', args=[self.pk])
+
+    def is_scan_enabled(self, global_settings):
+        if self.scan_mode == 'always':
+            return True
+        if self.scan_mode == 'never':
+            return False
+        return global_settings.auto_scan_enabled
+
+    def is_discover_enabled(self, global_settings):
+        if self.discover_mode == 'always':
+            return True
+        if self.discover_mode == 'never':
+            return False
+        return global_settings.auto_discover_enabled
