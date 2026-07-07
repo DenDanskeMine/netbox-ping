@@ -187,7 +187,7 @@ sudo systemctl restart netbox-rq
 
 - NetBox 4.5.0+
 - Python 3.12+
-- `ping` command on the server
+- `ping` command on the server ( iputils-ping )
 - `netbox-rq` worker running
 
 ## Development
