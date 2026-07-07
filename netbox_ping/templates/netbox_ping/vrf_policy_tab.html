@@ -1,0 +1,74 @@
+{% extends 'generic/object.html' %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-8">
+    <div class="card mb-3">
+      <h5 class="card-header">
+        <span class="mdi mdi-clock-outline"></span> Auto-Scan / Discover Policy
+      </h5>
+      <div class="card-body p-0">
+        <form method="post" action="{% url 'plugins:netbox_ping:vrf_policy' pk=object.pk %}">
+          {% csrf_token %}
+          <table class="table table-hover attr-table mb-0">
+            <tr>
+              <th scope="row" style="width: 30%">Auto-Scan</th>
+              <td>
+                <div class="d-flex align-items-center gap-3">
+                  {{ policy_form.scan_mode }}
+                  <span class="text-muted">
+                    {% if plugin_settings.auto_scan_enabled %}
+                      Global: <span class="badge text-bg-success">On</span> — {{ plugin_settings.get_auto_scan_interval_display }}
+                    {% else %}
+                      Global: <span class="badge text-bg-secondary">Off</span>
+                    {% endif %}
+                  </span>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <th scope="row" style="width: 30%">Auto-Discover</th>
+              <td>
+                <div class="d-flex align-items-center gap-3">
+                  {{ policy_form.discover_mode }}
+                  <span class="text-muted">
+                    {% if plugin_settings.auto_discover_enabled %}
+                      Global: <span class="badge text-bg-success">On</span> — {{ plugin_settings.get_auto_discover_interval_display }}
+                    {% else %}
+                      Global: <span class="badge text-bg-secondary">Off</span>
+                    {% endif %}
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </table>
+          <div class="card-footer text-end">
+            <button type="submit" class="btn btn-primary">
+              <span class="mdi mdi-content-save"></span> Save Policy
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col col-md-4">
+    <div class="card">
+      <h5 class="card-header">How this works</h5>
+      <div class="card-body">
+        <p class="text-muted">
+          This policy applies to <strong>every prefix in this VRF</strong>, including
+          ones added later — set it once instead of toggling each prefix.
+        </p>
+        <ul class="text-muted">
+          <li><strong>Follow Global</strong> — behave like the global plugin setting (default).</li>
+          <li><strong>Always</strong> — always auto-scan/discover this VRF, even if global is off.</li>
+          <li><strong>Never</strong> — never auto-scan/discover this VRF (e.g. unroutable partner space).</li>
+        </ul>
+        <p class="text-muted mb-0">
+          A per-prefix override (on the prefix's Ping Status tab) still wins over this VRF policy.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

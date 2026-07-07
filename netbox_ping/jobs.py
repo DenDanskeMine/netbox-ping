@@ -35,6 +35,44 @@ def _label_job(job, name):
         pass
 
 
+def is_scan_excluded(prefix):
+    """True if a prefix is *explicitly* excluded from scanning by a per-prefix
+    'custom_off' or a per-VRF 'never' policy.
+
+    Used to stop bulk "Scan all" from probing networks an operator deliberately
+    marked never-scan (e.g. unroutable partner/handoff VRFs). This is distinct
+    from "auto-scan enabled": a follow_global prefix while global auto-scan is
+    off is NOT excluded — a manual bulk scan may still run it. Precedence:
+    per-prefix override > per-VRF policy.
+    """
+    from .models import PrefixSchedule, VrfPolicy
+    schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
+    if schedule and schedule.scan_mode == 'custom_on':
+        return False
+    if schedule and schedule.scan_mode == 'custom_off':
+        return True
+    if prefix.vrf_id:
+        vp = VrfPolicy.objects.filter(vrf_id=prefix.vrf_id).first()
+        if vp and vp.scan_mode == 'never':
+            return True
+    return False
+
+
+def is_discover_excluded(prefix):
+    """Discover-side counterpart of is_scan_excluded (see its docstring)."""
+    from .models import PrefixSchedule, VrfPolicy
+    schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
+    if schedule and schedule.discover_mode == 'custom_on':
+        return False
+    if schedule and schedule.discover_mode == 'custom_off':
+        return True
+    if prefix.vrf_id:
+        vp = VrfPolicy.objects.filter(vrf_id=prefix.vrf_id).first()
+        if vp and vp.discover_mode == 'never':
+            return True
+    return False
+
+
 def _schedule_next_scan(prefix, settings):
     """
     Compute and store next_scan_at for a prefix, then enqueue a scheduled job.
@@ -44,15 +82,19 @@ def _schedule_next_scan(prefix, settings):
     instance=prefix (Prefix is not a JobsMixin model, so NetBox rejects instance-
     linked jobs for it).
     """
-    from .models import PrefixSchedule, SubnetScanResult
+    from .models import PrefixSchedule, SubnetScanResult, VrfPolicy
     from core.models import Job as CoreJob
+
+    # Precedence: per-prefix schedule > per-VRF policy > global settings.
+    vrf_policy = VrfPolicy.objects.filter(vrf_id=prefix.vrf_id).first() if prefix.vrf_id else None
+    base = vrf_policy.is_scan_enabled(settings) if vrf_policy else settings.auto_scan_enabled
 
     schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
     if schedule:
-        enabled = schedule.is_scan_enabled(settings)
+        enabled = schedule.is_scan_enabled(settings, base=base)
         interval = schedule.get_effective_scan_interval(settings)
     else:
-        enabled = settings.auto_scan_enabled
+        enabled = base
         interval = settings.auto_scan_interval
 
     ssr, _ = SubnetScanResult.objects.get_or_create(prefix=prefix)
@@ -84,15 +126,19 @@ def _schedule_next_discover(prefix, settings):
     Compute and store next_discover_at for a prefix, then enqueue a scheduled job.
     Uses SubnetScanResult.discover_job_id for deduplication (same reason as scan).
     """
-    from .models import PrefixSchedule, SubnetScanResult
+    from .models import PrefixSchedule, SubnetScanResult, VrfPolicy
     from core.models import Job as CoreJob
+
+    # Precedence: per-prefix schedule > per-VRF policy > global settings.
+    vrf_policy = VrfPolicy.objects.filter(vrf_id=prefix.vrf_id).first() if prefix.vrf_id else None
+    base = vrf_policy.is_discover_enabled(settings) if vrf_policy else settings.auto_discover_enabled
 
     schedule = PrefixSchedule.objects.filter(prefix=prefix).first()
     if schedule:
-        enabled = schedule.is_discover_enabled(settings)
+        enabled = schedule.is_discover_enabled(settings, base=base)
         interval = schedule.get_effective_discover_interval(settings)
     else:
-        enabled = settings.auto_discover_enabled
+        enabled = base
         interval = settings.auto_discover_interval
 
     ssr, _ = SubnetScanResult.objects.get_or_create(prefix=prefix)
@@ -407,7 +453,7 @@ class ScheduleRecoveryJob(JobRunner):
 
     def run(self, *args, **kwargs):
         from ipam.models import Prefix
-        from .models import PrefixSchedule, SubnetScanResult
+        from .models import PrefixSchedule, SubnetScanResult, VrfPolicy
         from core.models import Job as CoreJob
 
         settings = PluginSettings.load()
@@ -420,6 +466,12 @@ class ScheduleRecoveryJob(JobRunner):
         scan_results = {
             sr.prefix_id: sr
             for sr in SubnetScanResult.objects.all()
+        }
+        # Per-VRF policies, keyed by vrf_id. Prefixes in the global table
+        # (vrf_id is None) never match and always use the global baseline.
+        vrf_policies = {
+            vp.vrf_id: vp
+            for vp in VrfPolicy.objects.all()
         }
 
         # Only consider prefixes at or smaller than the configured max size
@@ -435,17 +487,31 @@ class ScheduleRecoveryJob(JobRunner):
         for prefix in prefixes:
             schedule = prefix_schedules.get(prefix.pk)
             ssr = scan_results.get(prefix.pk)
+            vrf_policy = vrf_policies.get(prefix.vrf_id) if prefix.vrf_id else None
+
+            # --- Baseline from per-VRF policy, falling back to global ---
+            # A 'follow_global' VRF policy (or no policy) yields the global
+            # setting, so behaviour is unchanged unless an operator opts a VRF
+            # in/out explicitly.
+            if vrf_policy:
+                base_scan_enabled = vrf_policy.is_scan_enabled(settings)
+                base_discover_enabled = vrf_policy.is_discover_enabled(settings)
+            else:
+                base_scan_enabled = settings.auto_scan_enabled
+                base_discover_enabled = settings.auto_discover_enabled
 
             # --- Effective settings for this prefix ---
+            # Per-prefix schedule is the most specific level and wins; when it
+            # is 'follow_global' it defers to the VRF/global baseline above.
             if schedule:
-                scan_enabled = schedule.is_scan_enabled(settings)
+                scan_enabled = schedule.is_scan_enabled(settings, base=base_scan_enabled)
                 scan_interval = schedule.get_effective_scan_interval(settings)
-                discover_enabled = schedule.is_discover_enabled(settings)
+                discover_enabled = schedule.is_discover_enabled(settings, base=base_discover_enabled)
                 discover_interval = schedule.get_effective_discover_interval(settings)
             else:
-                scan_enabled = settings.auto_scan_enabled
+                scan_enabled = base_scan_enabled
                 scan_interval = settings.auto_scan_interval
-                discover_enabled = settings.auto_discover_enabled
+                discover_enabled = base_discover_enabled
                 discover_interval = settings.auto_discover_interval
 
             # --- Helpers: check active jobs via stored PK (Prefix is not a

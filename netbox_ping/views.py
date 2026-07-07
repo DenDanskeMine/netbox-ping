@@ -7,15 +7,15 @@ from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMix
 
 from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
-from ipam.models import Prefix, IPAddress
+from ipam.models import Prefix, IPAddress, VRF
 
 from .models import (
     PingResult, PingHistory, SubnetScanResult, PluginSettings,
-    PrefixSchedule, DnsHistory, SSHJumpHost, UptimeReset,
+    PrefixSchedule, DnsHistory, SSHJumpHost, UptimeReset, VrfPolicy,
 )
-from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable, DnsHistoryTable
-from .filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet
-from .forms import PingResultFilterForm, PingHistoryFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm, SSHJumpHostForm
+from .tables import PingResultTable, PingHistoryTable, SubnetScanResultTable, DnsHistoryTable, VrfPolicyTable, PrefixScheduleTable
+from .filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet, VrfPolicyFilterSet, PrefixScheduleFilterSet
+from .forms import PingResultFilterForm, PingHistoryFilterForm, SubnetScanResultFilterForm, PluginSettingsForm, PrefixScheduleForm, PrefixScheduleEditForm, SSHJumpHostForm, VrfPolicyForm, VrfPolicyTabForm, VrfPolicyFilterForm, PrefixScheduleFilterForm
 
 logger = logging.getLogger('netbox.netbox_ping')
 
@@ -131,11 +131,41 @@ class PrefixPingTab(generic.ObjectChildrenView):
             scan_result = SubnetScanResult.objects.get(prefix=instance)
         except SubnetScanResult.DoesNotExist:
             scan_result = None
+        # The VRF policy (if any) sits between this prefix and the global
+        # setting, so "Follow Global" actually resolves through it.
+        vrf_policy = None
+        if instance.vrf_id:
+            vrf_policy = VrfPolicy.objects.filter(vrf_id=instance.vrf_id).first()
         return {
             'schedule': schedule,
             'schedule_form': schedule_form,
             'plugin_settings': plugin_settings,
             'scan_result': scan_result,
+            'vrf_policy': vrf_policy,
+        }
+
+
+@register_model_view(VRF, 'ping_policy', path='ping-policy')
+class VrfPolicyTab(generic.ObjectView):
+    """Tab on VRF detail page to set the per-VRF auto-scan/discover policy."""
+
+    queryset = VRF.objects.all()
+    template_name = 'netbox_ping/vrf_policy_tab.html'
+    tab = ViewTab(
+        label='Ping Policy',
+        permission='netbox_ping.view_vrfpolicy',
+        weight=1500,
+    )
+
+    def get_extra_context(self, request, instance):
+        try:
+            policy = VrfPolicy.objects.get(vrf=instance)
+        except VrfPolicy.DoesNotExist:
+            policy = None
+        return {
+            'policy': policy,
+            'policy_form': VrfPolicyTabForm(instance=policy),
+            'plugin_settings': PluginSettings.load(),
         }
 
 
@@ -223,7 +253,7 @@ class BulkPrefixScanView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request):
-        from .jobs import PrefixScanJob
+        from .jobs import PrefixScanJob, _label_job, is_scan_excluded
 
         pks = request.GET.getlist('pk')
         if pks:
@@ -232,16 +262,21 @@ class BulkPrefixScanView(LoginRequiredMixin, PermissionRequiredMixin, View):
             prefixes = Prefix.objects.all()
 
         count = 0
+        skipped = 0
         for prefix in prefixes:
-            from .jobs import PrefixScanJob, _label_job
+            # Honour explicit never-scan policy (per-prefix custom_off / per-VRF
+            # never) even for bulk runs, so unroutable VRFs are never probed.
+            if is_scan_excluded(prefix):
+                skipped += 1
+                continue
             job = PrefixScanJob.enqueue(user=request.user, data={'prefix_id': prefix.pk, 'manual': True}, job_timeout=1800)
             _label_job(job, f'Prefix Scan: {prefix.prefix}')
             count += 1
 
-        messages.info(
-            request,
-            f'Enqueued scan jobs for {count} prefixes'
-        )
+        msg = f'Enqueued scan jobs for {count} prefixes'
+        if skipped:
+            msg += f' (skipped {skipped} excluded by policy)'
+        messages.info(request, msg)
         return redirect('/ipam/prefixes/')
 
 
@@ -250,7 +285,7 @@ class BulkPrefixDiscoverView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = 'netbox_ping.view_pingresult'
 
     def get(self, request):
-        from .jobs import PrefixDiscoverJob
+        from .jobs import PrefixDiscoverJob, _label_job, is_discover_excluded
 
         pks = request.GET.getlist('pk')
         if pks:
@@ -259,16 +294,19 @@ class BulkPrefixDiscoverView(LoginRequiredMixin, PermissionRequiredMixin, View):
             prefixes = Prefix.objects.all()
 
         count = 0
+        skipped = 0
         for prefix in prefixes:
-            from .jobs import PrefixDiscoverJob, _label_job
+            if is_discover_excluded(prefix):
+                skipped += 1
+                continue
             job = PrefixDiscoverJob.enqueue(user=request.user, data={'prefix_id': prefix.pk, 'manual': True}, job_timeout=1800)
             _label_job(job, f'Prefix Discover: {prefix.prefix}')
             count += 1
 
-        messages.info(
-            request,
-            f'Enqueued discover jobs for {count} prefixes'
-        )
+        msg = f'Enqueued discover jobs for {count} prefixes'
+        if skipped:
+            msg += f' (skipped {skipped} excluded by policy)'
+        messages.info(request, msg)
         return redirect('/ipam/prefixes/')
 
 
@@ -470,9 +508,9 @@ class PluginSettingsEditView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return render(request, 'netbox_ping/settings.html', self._get_context(form))
 
 
-class PrefixScheduleEditView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """Save per-prefix auto-scan/discover schedule."""
-    permission_required = 'netbox_ping.view_pingresult'
+class PrefixScheduleSaveView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Save per-prefix policy from the Prefix detail tab."""
+    permission_required = 'netbox_ping.change_prefixschedule'
 
     def post(self, request, pk):
         prefix = get_object_or_404(Prefix, pk=pk)
@@ -484,10 +522,91 @@ class PrefixScheduleEditView(LoginRequiredMixin, PermissionRequiredMixin, View):
         form = PrefixScheduleForm(request.POST, instance=schedule)
         if form.is_valid():
             form.save()
-            messages.success(request, f'Schedule saved for {prefix.prefix}')
+            messages.success(request, f'Policy saved for {prefix.prefix}')
         else:
-            messages.error(request, 'Invalid schedule data.')
+            messages.error(request, 'Invalid policy data.')
         return redirect(prefix.get_absolute_url() + 'ping/')
+
+
+class VrfPolicySaveView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Save per-VRF auto-scan/discover policy from the VRF detail tab."""
+    permission_required = 'netbox_ping.change_vrfpolicy'
+
+    def post(self, request, pk):
+        vrf = get_object_or_404(VRF, pk=pk)
+        try:
+            policy = VrfPolicy.objects.get(vrf=vrf)
+        except VrfPolicy.DoesNotExist:
+            policy = VrfPolicy(vrf=vrf)
+
+        form = VrfPolicyTabForm(request.POST, instance=policy)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Ping policy saved for VRF {vrf.name}')
+        else:
+            messages.error(request, 'Invalid policy data.')
+        return redirect(vrf.get_absolute_url() + 'ping-policy/')
+
+
+# ─── VRF Ping Policy central management (Plugins › Ping) ────────────────────
+# Standard NetBox object views (list / detail / edit / delete / bulk-delete).
+
+class VrfPolicyListView(generic.ObjectListView):
+    queryset = VrfPolicy.objects.select_related('vrf')
+    table = VrfPolicyTable
+    filterset = VrfPolicyFilterSet
+    filterset_form = VrfPolicyFilterForm
+    actions = {'add': {'add'}, 'export': set(), 'bulk_delete': {'delete'}}
+
+
+class VrfPolicyView(generic.ObjectView):
+    queryset = VrfPolicy.objects.select_related('vrf')
+
+
+class VrfPolicyEditView(generic.ObjectEditView):
+    queryset = VrfPolicy.objects.all()
+    form = VrfPolicyForm
+
+
+class VrfPolicyDeleteView(generic.ObjectDeleteView):
+    queryset = VrfPolicy.objects.all()
+
+
+class VrfPolicyBulkDeleteView(generic.BulkDeleteView):
+    queryset = VrfPolicy.objects.select_related('vrf')
+    table = VrfPolicyTable
+    filterset = VrfPolicyFilterSet
+
+
+# ─── Prefix Policy management (PrefixSchedule) — standard NetBox views ──────
+# Per-prefix policies can also be edited inline on each prefix's Ping Status
+# tab; these standard views give the same list/add/edit/delete as VRF Policies.
+
+class PrefixScheduleListView(generic.ObjectListView):
+    queryset = PrefixSchedule.objects.select_related('prefix')
+    table = PrefixScheduleTable
+    filterset = PrefixScheduleFilterSet
+    filterset_form = PrefixScheduleFilterForm
+    actions = {'add': {'add'}, 'export': set(), 'bulk_delete': {'delete'}}
+
+
+class PrefixScheduleView(generic.ObjectView):
+    queryset = PrefixSchedule.objects.select_related('prefix')
+
+
+class PrefixScheduleEditView(generic.ObjectEditView):
+    queryset = PrefixSchedule.objects.all()
+    form = PrefixScheduleEditForm
+
+
+class PrefixScheduleDeleteView(generic.ObjectDeleteView):
+    queryset = PrefixSchedule.objects.all()
+
+
+class PrefixScheduleBulkDeleteView(generic.BulkDeleteView):
+    queryset = PrefixSchedule.objects.select_related('prefix')
+    table = PrefixScheduleTable
+    filterset = PrefixScheduleFilterSet
 
 
 class SendTestEmailView(LoginRequiredMixin, PermissionRequiredMixin, View):

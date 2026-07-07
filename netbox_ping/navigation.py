@@ -27,6 +27,18 @@ menu = PluginMenu(
                 permissions=('netbox_ping.view_pinghistory',),
             ),
         )),
+        ('Policies', (
+            PluginMenuItem(
+                link='plugins:netbox_ping:prefixschedule_list',
+                link_text='Prefix Policies',
+                permissions=('netbox_ping.view_prefixschedule',),
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_ping:vrfpolicy_list',
+                link_text='VRF Policies',
+                permissions=('netbox_ping.view_vrfpolicy',),
+            ),
+        )),
         ('Configuration', (
             PluginMenuItem(
                 link='plugins:netbox_ping:settings',

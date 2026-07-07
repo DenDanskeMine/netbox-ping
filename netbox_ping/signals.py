@@ -75,6 +75,36 @@ def on_prefix_schedule_saved(sender, instance, **kwargs):
     transaction.on_commit(_reschedule)
 
 
+def on_vrf_policy_changed(sender, instance, **kwargs):
+    """
+    When a VRF ping policy is saved or deleted, re-schedule every prefix in
+    that VRF so the change (e.g. set to 'never') takes effect immediately —
+    cancelling in-flight scans rather than waiting for the next cycle.
+    """
+    from django.db import transaction
+
+    def _reschedule():
+        try:
+            from ipam.models import Prefix
+            from .models import PluginSettings
+            from .jobs import _schedule_next_scan, _schedule_next_discover
+
+            settings = PluginSettings.load()
+            prefixes = Prefix.objects.filter(
+                vrf_id=instance.vrf_id,
+                prefix__net_mask_length__gte=settings.max_prefix_size,
+            )
+            for prefix in prefixes:
+                _schedule_next_scan(prefix, settings)
+                _schedule_next_discover(prefix, settings)
+            logger.info(f'Rescheduled prefixes in VRF {instance.vrf_id} after policy change')
+
+        except Exception as e:
+            logger.error(f'Error rescheduling after VRF policy change: {e}')
+
+    transaction.on_commit(_reschedule)
+
+
 def on_prefix_schedule_deleted(sender, instance, **kwargs):
     """
     When a PrefixSchedule is deleted, fall back to global settings for that prefix.

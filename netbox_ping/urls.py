@@ -1,5 +1,7 @@
 from django.urls import path
+from netbox.views.generic import ObjectChangeLogView, ObjectJournalView
 from . import views
+from .models import VrfPolicy, PrefixSchedule
 
 app_name = 'netbox_ping'
 
@@ -31,8 +33,31 @@ urlpatterns = [
     path('bulk-scan/', views.BulkPrefixScanView.as_view(), name='bulk_prefix_scan'),
     path('bulk-discover/', views.BulkPrefixDiscoverView.as_view(), name='bulk_prefix_discover'),
 
-    # Per-prefix schedule
-    path('prefix/<int:pk>/schedule/', views.PrefixScheduleEditView.as_view(), name='prefix_schedule'),
+    # Per-prefix policy save from the Prefix detail tab
+    path('prefix/<int:pk>/schedule/', views.PrefixScheduleSaveView.as_view(), name='prefix_schedule'),
+
+    # Prefix Policy management (standard NetBox object views)
+    path('prefix-policies/', views.PrefixScheduleListView.as_view(), name='prefixschedule_list'),
+    path('prefix-policies/add/', views.PrefixScheduleEditView.as_view(), name='prefixschedule_add'),
+    path('prefix-policies/delete/', views.PrefixScheduleBulkDeleteView.as_view(), name='prefixschedule_bulk_delete'),
+    path('prefix-policies/<int:pk>/', views.PrefixScheduleView.as_view(), name='prefixschedule'),
+    path('prefix-policies/<int:pk>/edit/', views.PrefixScheduleEditView.as_view(), name='prefixschedule_edit'),
+    path('prefix-policies/<int:pk>/delete/', views.PrefixScheduleDeleteView.as_view(), name='prefixschedule_delete'),
+    path('prefix-policies/<int:pk>/changelog/', ObjectChangeLogView.as_view(), name='prefixschedule_changelog', kwargs={'model': PrefixSchedule}),
+    path('prefix-policies/<int:pk>/journal/', ObjectJournalView.as_view(), name='prefixschedule_journal', kwargs={'model': PrefixSchedule}),
+
+    # Per-VRF policy (save from VRF detail tab)
+    path('vrf/<int:pk>/policy/', views.VrfPolicySaveView.as_view(), name='vrf_policy'),
+
+    # VRF Ping Policy central management (standard NetBox object views)
+    path('vrf-policies/', views.VrfPolicyListView.as_view(), name='vrfpolicy_list'),
+    path('vrf-policies/add/', views.VrfPolicyEditView.as_view(), name='vrfpolicy_add'),
+    path('vrf-policies/delete/', views.VrfPolicyBulkDeleteView.as_view(), name='vrfpolicy_bulk_delete'),
+    path('vrf-policies/<int:pk>/', views.VrfPolicyView.as_view(), name='vrfpolicy'),
+    path('vrf-policies/<int:pk>/edit/', views.VrfPolicyEditView.as_view(), name='vrfpolicy_edit'),
+    path('vrf-policies/<int:pk>/delete/', views.VrfPolicyDeleteView.as_view(), name='vrfpolicy_delete'),
+    path('vrf-policies/<int:pk>/changelog/', ObjectChangeLogView.as_view(), name='vrfpolicy_changelog', kwargs={'model': VrfPolicy}),
+    path('vrf-policies/<int:pk>/journal/', ObjectJournalView.as_view(), name='vrfpolicy_journal', kwargs={'model': VrfPolicy}),
 
     # Audit Reports
     path('reports/', views.AuditReportView.as_view(), name='audit_report'),

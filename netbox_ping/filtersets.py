@@ -1,7 +1,7 @@
 import django_filters
 from django.db import models as db_models
 from netbox.filtersets import NetBoxModelFilterSet
-from .models import PingResult, PingHistory, SubnetScanResult
+from .models import PingResult, PingHistory, SubnetScanResult, VrfPolicy, PrefixSchedule
 
 
 class PingResultFilterSet(NetBoxModelFilterSet):
@@ -76,6 +76,34 @@ class SubnetScanResultFilterSet(NetBoxModelFilterSet):
     class Meta:
         model = SubnetScanResult
         fields = ('id', 'prefix')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            db_models.Q(prefix__prefix__net_contains_or_equals=value)
+        )
+
+
+class VrfPolicyFilterSet(NetBoxModelFilterSet):
+
+    class Meta:
+        model = VrfPolicy
+        fields = ('id', 'vrf', 'scan_mode', 'discover_mode')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            db_models.Q(vrf__name__icontains=value) | db_models.Q(vrf__rd__icontains=value)
+        )
+
+
+class PrefixScheduleFilterSet(NetBoxModelFilterSet):
+
+    class Meta:
+        model = PrefixSchedule
+        fields = ('id', 'prefix', 'scan_mode', 'discover_mode', 'stale_mode', 'ping_mode')
 
     def search(self, queryset, name, value):
         if not value.strip():

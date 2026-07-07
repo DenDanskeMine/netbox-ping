@@ -4,13 +4,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from netbox.api.viewsets import NetBoxModelViewSet
-from ..models import PingResult, PingHistory, SubnetScanResult, UptimeReset
-from ..filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet
+from ..models import PingResult, PingHistory, SubnetScanResult, UptimeReset, VrfPolicy, PrefixSchedule
+from ..filtersets import PingResultFilterSet, PingHistoryFilterSet, SubnetScanResultFilterSet, VrfPolicyFilterSet, PrefixScheduleFilterSet
 from .serializers import (
     PingResultSerializer,
     PingHistorySerializer,
     SubnetScanResultSerializer,
     UptimeResetSerializer,
+    VrfPolicySerializer,
+    PrefixScheduleSerializer,
 )
 
 
@@ -94,6 +96,18 @@ class SubnetScanResultViewSet(NetBoxModelViewSet):
     queryset = SubnetScanResult.objects.select_related('prefix')
     serializer_class = SubnetScanResultSerializer
     filterset_class = SubnetScanResultFilterSet
+
+
+class VrfPolicyViewSet(NetBoxModelViewSet):
+    queryset = VrfPolicy.objects.select_related('vrf')
+    serializer_class = VrfPolicySerializer
+    filterset_class = VrfPolicyFilterSet
+
+
+class PrefixScheduleViewSet(NetBoxModelViewSet):
+    queryset = PrefixSchedule.objects.select_related('prefix')
+    serializer_class = PrefixScheduleSerializer
+    filterset_class = PrefixScheduleFilterSet
 
 
 class UptimeResetViewSet(

@@ -2,7 +2,7 @@ import django_tables2 as tables
 from netbox.tables import NetBoxTable, columns
 from utilities.tables import register_table_column
 from ipam.tables import IPAddressTable, AnnotatedIPAddressTable, PrefixTable
-from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory
+from .models import PingResult, PingHistory, SubnetScanResult, DnsHistory, VrfPolicy, PrefixSchedule
 
 
 PINGRESULT_STATUS_TEMPLATE = '''
@@ -199,6 +199,63 @@ class SubnetScanResultTable(NetBoxTable):
             'prefix', 'total_hosts', 'hosts_up', 'hosts_down',
             'hosts_stale', 'hosts_new', 'last_scanned', 'next_scan_at',
         )
+
+
+# Render the raw mode value (record.<field>) as a colored badge. We use the raw
+# field rather than the cell `value` because django-tables2 passes choice fields
+# through their display string, which broke key-based comparisons.
+VRF_POLICY_SCAN_TEMPLATE = '''
+{% if record.scan_mode == 'never' %}<span class="badge text-bg-danger">Never</span>
+{% elif record.scan_mode == 'always' %}<span class="badge text-bg-success">Always</span>
+{% else %}<span class="badge text-bg-secondary">Follow Global</span>{% endif %}
+'''
+VRF_POLICY_DISCOVER_TEMPLATE = '''
+{% if record.discover_mode == 'never' %}<span class="badge text-bg-danger">Never</span>
+{% elif record.discover_mode == 'always' %}<span class="badge text-bg-success">Always</span>
+{% else %}<span class="badge text-bg-secondary">Follow Global</span>{% endif %}
+'''
+
+
+class VrfPolicyTable(NetBoxTable):
+    """Table for the VrfPolicy list view."""
+
+    vrf = tables.Column(
+        linkify=True,
+        verbose_name='VRF',
+    )
+    scan_mode = columns.TemplateColumn(
+        template_code=VRF_POLICY_SCAN_TEMPLATE,
+        verbose_name='Auto-Scan',
+        order_by='scan_mode',
+    )
+    discover_mode = columns.TemplateColumn(
+        template_code=VRF_POLICY_DISCOVER_TEMPLATE,
+        verbose_name='Auto-Discover',
+        order_by='discover_mode',
+    )
+
+    class Meta(NetBoxTable.Meta):
+        model = VrfPolicy
+        fields = ('pk', 'id', 'vrf', 'scan_mode', 'discover_mode', 'created', 'last_updated', 'actions')
+        default_columns = ('vrf', 'scan_mode', 'discover_mode')
+
+
+class PrefixScheduleTable(NetBoxTable):
+    """Table for the per-prefix override (PrefixSchedule) list view."""
+
+    prefix = tables.Column(
+        linkify=lambda record: record.prefix.get_absolute_url(),
+        verbose_name='Prefix',
+    )
+    scan_mode = tables.Column(accessor='get_scan_mode_display', verbose_name='Scan', order_by='scan_mode')
+    discover_mode = tables.Column(accessor='get_discover_mode_display', verbose_name='Discover', order_by='discover_mode')
+    stale_mode = tables.Column(accessor='get_stale_mode_display', verbose_name='Stale', order_by='stale_mode')
+    ping_mode = tables.Column(accessor='get_ping_mode_display', verbose_name='Ping Mode', order_by='ping_mode')
+
+    class Meta(NetBoxTable.Meta):
+        model = PrefixSchedule
+        fields = ('pk', 'id', 'prefix', 'scan_mode', 'discover_mode', 'stale_mode', 'ping_mode', 'created', 'last_updated')
+        default_columns = ('prefix', 'scan_mode', 'discover_mode', 'stale_mode', 'ping_mode')
 
 
 class DnsHistoryTable(tables.Table):
