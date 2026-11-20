@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 
+from netbox.object_actions import BulkDelete, BulkExport
 from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
 from ipam.models import Prefix, IPAddress
@@ -28,10 +29,7 @@ class PingResultListView(generic.ObjectListView):
     filterset = PingResultFilterSet
     filterset_form = PingResultFilterForm
     template_name = 'netbox_ping/pingresult_list.html'
-    actions = {
-        'export': set(),
-        'bulk_delete': {'delete'},
-    }
+    actions = (BulkExport, BulkDelete)
 
 
 class PingResultView(generic.ObjectView):
@@ -55,10 +53,7 @@ class PingHistoryListView(generic.ObjectListView):
     table = PingHistoryTable
     filterset = PingHistoryFilterSet
     filterset_form = PingHistoryFilterForm
-    actions = {
-        'export': set(),
-        'bulk_delete': {'delete'},
-    }
+    actions = (BulkExport, BulkDelete)
 
 
 class PingHistoryView(generic.ObjectView):
@@ -82,10 +77,7 @@ class SubnetScanResultListView(generic.ObjectListView):
     table = SubnetScanResultTable
     filterset = SubnetScanResultFilterSet
     filterset_form = SubnetScanResultFilterForm
-    actions = {
-        'export': set(),
-        'bulk_delete': {'delete'},
-    }
+    actions = (BulkExport, BulkDelete)
 
 
 class SubnetScanResultView(generic.ObjectView):
